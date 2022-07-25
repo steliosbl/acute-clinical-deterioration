@@ -129,3 +129,12 @@ Provides guidelines/framework for developemnt process and what to include in exp
  		- Down-triage: Model determines lower risk than ESI
  5. Future:
  	- Calibration according to ESI is good for comparisons, but can re-calibrate
+
+## References
+[Huang21] [Application of machine learning in predicting hospital readmissions: a scoping review of the literature](https://doi.org/10.1186/s12874-021-01284-z)
+
+[Levin21] [Machine-Learning-Based Electronic Triage More Accurately Differentiates Patients With Respect to Clinical Outcomes Compared With the Emergency Severity Index](https://doi.org/10.1016/j.annemergmed.2017.08.005)
+
+[Min19] [Predictive Modeling of the Hospital Readmission Risk from Patients’ Claims Data Using Machine Learning: A Case Study on COPD](https://doi.org/10.1038/s41598-019-39071-y)
+
+[Stenwig22] [Comparative analysis of explainable machine learning prediction models for hospital mortality](https://doi.org/10.1186/s12874-022-01540-w)
