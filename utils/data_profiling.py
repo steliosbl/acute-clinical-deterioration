@@ -7,6 +7,21 @@ import matplotlib.ticker as ticker
 import seaborn as sns
 
 
+def missing_data(
+    df, subset=[], title="Proportion of missing values per column", ax=None
+):
+    if len(subset):
+        df = df[subset]
+
+    df = df.isna().sum(axis=0) / df.shape[0]
+    df = df[df > 0].sort_values().to_frame(name="Missing values (%)")
+
+    ax = sns.barplot(data=df * 100, x="Missing values (%)", y=df.index, ax=None)
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(10))
+    ax.set_xlim(0, 100)
+    ax.set(ylabel="Column", title=title)
+
+
 def sns_multi_time_series(df, x, y, hue, xlabel="", ylabel="", title="", col_wrap=3):
     g = sns.relplot(
         data=df,
@@ -85,6 +100,12 @@ def band_proportions_periodic(df: pd.DataFrame, col, title="", period="M", subse
         ylabel="Proportion (%)",
         title=title,
     )
+
+
+def single_boxplot(df, col):
+    fig, ax = plt.subplots(figsize=(12, 2))
+    sns.boxplot(data=df[col], orient="h", ax=ax)
+    ax.set(title=col)
 
 
 def topn_icd_in_year(df, icd10, datestart, dateend, topn=5, title=None):
