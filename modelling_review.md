@@ -32,7 +32,6 @@ Provides guidelines/framework for developemnt process and what to include in exp
  - Temporal dimension in patient records is important as it may indicate the disease progression process [pp. 4]
 
 ### Data Preprocessing
-
  - Kept only patients with COPD, over 40y/o, Male, with at least one inpatient admission, and at least 60 days total. 
  - Total 112k admissions involving 27k patients (92k first admissions and 20k readmissions)
 

@@ -1,3 +1,5 @@
+import string
+
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
@@ -193,20 +195,16 @@ class SCIData(pd.DataFrame):
             ("Z", 52, 99),
         ]
 
-        vague = []
-        for letter, start, stop in ranges:
-            vague += [f"{letter}{str(num).zfill(2)}" for num in range(start, stop + 1)]
+        vague = frozenset(f"{letter}{str(num).zfill(2)}" for letter, start, stop in ranges for num in range(start, stop + 1))
 
-        r = self.copy()
-        idx = r.MainICD10.str[:3].isin(vague)
-        for _ in range(1, 7):
-            r.loc[idx, "MainICD10"] = r.loc[idx, f"SecDiag{_}"]
-            r.loc[idx, f"SecDiag{_}"] = np.nan
-            idx = r.MainICD10.str[:3].isin(vague)
+        r = self[SCICols.diagnoses].stack()
+        r[r.str[:3].isin(vague)] = np.nan
+        r = justify(r.unstack())
+        
+        result = self.copy()
+        result[SCICols.diagnoses] = r
 
-        r.loc[r.MainICD10.str[:3].isin(vague), "MainICD10"] = np.nan
-
-        return SCIData(data=r)
+        return SCIData(data=result)
 
     def clean_O2_saturation(self, outlier_threshold_std=3):
         sat, score = "c_O2_saturation", "c_NEWS_O2_sat_score"
@@ -452,15 +450,75 @@ class SCIData(pd.DataFrame):
         r[col] = r[col].replace(
             {
                 "other than above": "other",
-                "falls": "accident",
-                "road traffic accident": "accident",
-                "sports injury": "accident",
-                "knife injuries inflicted": "assault",
+                "falls": "trauma",
+                "road traffic accident": "trauma",
+                "sports injury": "trauma",
+                "knife injuries inflicted": "trauma",
+                "assault": "trauma",
+                "self harm": "trauma",
+                "accident": "trauma",
+                "eyes": "other",
+                "dental": "other",
+                "s/guarding issue/vunerable per": "other",
+                "rheumatology": "other",
             }
         )
 
         return SCIData(r)
 
+    def clean_icd10(self, icd10=None):
+        if icd10 is None:
+            icd10 = pd.read_hdf("data/icd10.h5", "ICD10_Codes")
+
+        r = self[SCICols.diagnoses].stack()
+
+        # Fix entries matching 'A12.34 D' or 'A12.X'
+        mask = r.str.contains(" ") | r.str.endswith(".X")
+        r[mask] = r[mask].str[:-2]
+
+        # Fix entries matching 'A12.34D'
+        mask = r.str[-1].isin(frozenset(string.ascii_uppercase))
+        r[mask] = r.str[:-1]
+
+        # Delete entries not in the external table (only 3 in the entire dataset!)
+        mask = ~r.isin(frozenset(icd10.index))
+        r[mask] = np.nan
+        r = justify(r.unstack())
+
+        result = self.copy()
+        result[SCICols.diagnoses] = r
+
+        return SCIData(result)
+
+def justify(df, invalid_val=np.nan, axis=1, side='left'):    
+    """
+    Justifies a 2D array
+
+    Parameters
+    ----------
+    df : DataFrame
+        Input DataFrame to be justified
+    axis : int
+        Axis along which justification is to be made
+    side : str
+        Direction of justification. It could be 'left', 'right', 'up', 'down'
+        It should be 'left' or 'right' for axis=1 and 'up' or 'down' for axis=0.
+
+    """
+    if invalid_val is np.nan:
+        mask = df.notna().values
+    else:
+        mask = df!=invalid_val
+
+    justified_mask = np.sort(mask,axis=axis)
+    if (side=='up') | (side=='left'):
+        justified_mask = np.flip(justified_mask,axis=axis)
+    out = np.full(df.shape, invalid_val).astype('O') 
+    if axis==1:
+        out[justified_mask] = df.values[mask]
+    else:
+        out.T[justified_mask.T] = df.values.T[mask.T]
+    return pd.DataFrame(out, columns=df.columns)
 
 class NEWS:
     @staticmethod
