@@ -46,6 +46,66 @@ class SCIData(pd.DataFrame):
             .clean_ae_patient_group()
         )
 
+    def augment_ccs(
+        self,
+        infile="data/ccs.h5",
+        ccs=None,
+        sentinel=[259, "Residual codes; unclassified"],
+    ):
+        """ Joins SCI and the CCS reference table fuzzily.
+        Codes that can't be matched exactly are matched with their 3-codes 
+        :param infile: The HDF5 file to load the CCS matching table from
+        :param ccs: Pre-loaded CCS match table dataframe
+        :param sentinel: What to fill un-matched values with. Default is the code for unclassified/residual codes
+        :returns: New SCIData instance with augmented with CCS codes and descriptions
+        """
+        if ccs is None:
+            ccs = pd.read_hdf(infile, "codes")
+
+        no_dot = self.MainICD10.str.replace(".", "")
+        # Perfect full-ICD10 matches
+        r = self.join(ccs, on=no_dot)
+
+        # Approximate matches based on first 4 characters (e.g. M4479) or first 3 (e.g. A125)
+        approx = (self.join(ccs, on=no_dot.str[:_]) for _ in (3, 4))
+        for df in approx:
+            mask = df.CCSGroup.notna() & r.CCSGroup.isna()
+            r.loc[mask, ccs.columns] = df.loc[mask, ccs.columns]
+
+        # Fill remaining values
+        remaining = r.CCSGroup.isna() & r.MainICD10.notna()
+        r.loc[remaining, ccs.columns] = sentinel
+
+        return SCIData(r)
+
+    def augment_shmi(self, infile="data/ccs.h5", shmi=None):
+        """ Joins SCI and the SHMI matching table. Must have already matched with CCS groups.
+        :param infile: The HDF5 file to load the matching table from
+        :param ccs: Pre-loaded SHMI match table dataframe
+        :returns: New SCIData instance with augmented with SHMI diagnosis groups and descriptions
+        """
+        if shmi is None:
+            shmi = pd.read_hdf(infile, "shmi")
+
+        if "CCSGroup" not in self:
+            raise KeyError("No CCSGroup. Must run `augment_ccs` first.")
+
+        return SCIData(self.join(shmi, on="CCSGroup"))
+
+    def augment_hsmr(self, infile="data/ccs.h5", hsmr=None):
+        """ Joins SCI and the HSMR matching table. Must have already matched with CCS groups.
+        :param infile: The HDF5 file to load the matching table from
+        :param hsmr: Pre-loaded HSMR match table dataframe
+        :returns: New SCIData instance with augmented with HSMR aggregate groups and descriptions
+        """
+        if hsmr is None:
+            hsmr = pd.read_hdf(infile, "hsmr")
+
+        if "CCSGroup" not in self:
+            raise KeyError("No CCSGroup. Must run `augment_ccs` first.")
+
+        return SCIData(self.join(hsmr, on="CCSGroup"))
+
     def derive_covid(
         self,
         covid_codes=["U07.1", "J12.8", "B97.2"],
@@ -195,12 +255,16 @@ class SCIData(pd.DataFrame):
             ("Z", 52, 99),
         ]
 
-        vague = frozenset(f"{letter}{str(num).zfill(2)}" for letter, start, stop in ranges for num in range(start, stop + 1))
+        vague = frozenset(
+            f"{letter}{str(num).zfill(2)}"
+            for letter, start, stop in ranges
+            for num in range(start, stop + 1)
+        )
 
         r = self[SCICols.diagnoses].stack()
         r[r.str[:3].isin(vague)] = np.nan
         r = justify(r.unstack())
-        
+
         result = self.copy()
         result[SCICols.diagnoses] = r
 
@@ -490,7 +554,8 @@ class SCIData(pd.DataFrame):
 
         return SCIData(result)
 
-def justify(df, invalid_val=np.nan, axis=1, side='left'):    
+
+def justify(df, invalid_val=np.nan, axis=1, side="left"):
     """
     Justifies a 2D array
 
@@ -508,17 +573,18 @@ def justify(df, invalid_val=np.nan, axis=1, side='left'):
     if invalid_val is np.nan:
         mask = df.notna().values
     else:
-        mask = df!=invalid_val
+        mask = df != invalid_val
 
-    justified_mask = np.sort(mask,axis=axis)
-    if (side=='up') | (side=='left'):
-        justified_mask = np.flip(justified_mask,axis=axis)
-    out = np.full(df.shape, invalid_val).astype('O') 
-    if axis==1:
+    justified_mask = np.sort(mask, axis=axis)
+    if (side == "up") | (side == "left"):
+        justified_mask = np.flip(justified_mask, axis=axis)
+    out = np.full(df.shape, invalid_val).astype("O")
+    if axis == 1:
         out[justified_mask] = df.values[mask]
     else:
         out.T[justified_mask.T] = df.values.T[mask.T]
     return pd.DataFrame(out, columns=df.columns)
+
 
 class NEWS:
     @staticmethod
