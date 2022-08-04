@@ -106,6 +106,28 @@ class SCIData(pd.DataFrame):
 
         return SCIData(self.join(hsmr, on="CCSGroup"))
 
+    def augment_icd10_grouping(self, infile="data/icd10.h5", icd10=None):
+        """ Joins SCI and the ICD-10 chapter & group table.
+        :param infile: The HDF5 file to load the table from
+        :param hsmr: Pre-loaded ICD-10 table dataframe
+        :returns: New SCIData instance with augmented with ICD-10 groups and chapters
+        """
+        if icd10 is None:
+            icd10 = pd.read_hdf(infile, "ICD10_3_Codes")
+
+        return SCIData(self.join(icd10, on=self.MainICD10.str[:3]))
+
+    def augment_icd10_descriptions(self, infile="data/icd10.h5", icd10=None):
+        """ Joins SCI and the ICD-10 code table.
+        :param infile: The HDF5 file to load the table from
+        :param hsmr: Pre-loaded ICD-10 table dataframe
+        :returns: New SCIData instance with augmented with ICD-10 full descriptions
+        """
+        if icd10 is None:
+            icd10 = pd.read_hdf(infile, "ICD10_Codes")
+
+        return SCIData(self.join(icd10, on="MainICD10"))
+
     def derive_covid(
         self,
         covid_codes=["U07.1", "J12.8", "B97.2"],
@@ -904,6 +926,14 @@ class SCICols:
         "c_Pain",
         "c_Nausea",
         "c_Vomiting_since_last_round",
+    ]
+
+    icd10_grouping = [
+        "Chapter_No",
+        "Chapter_Desc",
+        "Group_Code",
+        "Group_Desc",
+        "ICD10_3_Code_Desc",
     ]
 
     @staticmethod
