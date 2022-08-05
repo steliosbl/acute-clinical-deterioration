@@ -230,23 +230,28 @@ class SCIData(pd.DataFrame):
         r = self.copy()
         r["CriticalCare"] = r[SCICols.wards].isin(critical_wards).any(axis=1)
 
-        wm = r.melt(id_vars="SpellSerial", value_vars=SCICols.wards).drop(
-            "variable", axis=1
-        )
-        wm = wm[wm.value.isin(critical_wards)].drop_duplicates()
-        r = r.merge(
-            wm[wm.duplicated()],
-            how="left",
-            indicator=True,
-            left_on="SpellSerial",
-            right_on="SpellSerial",
-        ).rename(columns={"_merge": "CriticalReadmission"})
-        r.CriticalReadmission = r.CriticalReadmission.eq("both") | (
-            r.Readmission & r.CriticalCare
-        )
-        r.CriticalReadmitted = r.Readmitted & r.CriticalCare
+        if "Readmission" in self:
+            wm = r.melt(id_vars="SpellSerial", value_vars=SCICols.wards).drop(
+                "variable", axis=1
+            )
+            wm = wm[wm.value.isin(critical_wards)].drop_duplicates()
+            r = r.merge(
+                wm[wm.duplicated()],
+                how="left",
+                indicator=True,
+                left_on="SpellSerial",
+                right_on="SpellSerial",
+            ).rename(columns={"_merge": "CriticalReadmission"})
+            r.CriticalReadmission = r.CriticalReadmission.eq("both") | (
+                r.Readmission & r.CriticalCare
+            )
+            r["CriticalReadmitted"] = r.Readmitted & r.CriticalCare
+        else:
+            print(
+                "Readmissions not derived - skipping. If you need them, run `derive_readmission` first"
+            )
 
-        return SCIData(data=r.drop("value", axis=1))
+        return SCIData(data=r.drop("value", axis=1, errors='ignore'))
 
     def derive_main_icd3code(self, force=False):
         """ Derives the 3-Code from the main coded diagnosis
@@ -383,7 +388,7 @@ class SCIData(pd.DataFrame):
             NEWS.systolic_scale
         )
 
-        return r
+        return SCIData(r)
 
     def clean_respiration_rate(self):
         rate, score = "c_Respiration_rate", "c_NEWS_resp_rate_score"
@@ -506,7 +511,7 @@ class SCIData(pd.DataFrame):
 
         r.loc[r[col] > 10, col] /= 10
 
-        return r
+        return SCIData(r)
 
     def clean_ae_text(self):
         complaint, diag = "AandEPresentingComplaint", "AandEMainDiagnosis"
@@ -842,6 +847,8 @@ class SCICols:
         "DiedDuringStay",
         "DiedWithin30Days",
         "DischargeDestination",
+        "Readmitted",
+        "Mortality",
     ]
 
     ae = [
