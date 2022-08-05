@@ -44,6 +44,7 @@ class SCIData(pd.DataFrame):
             .clean_temperature()
             .clean_ae_text()
             .clean_ae_patient_group()
+            .clean_news()
         )
 
     def augment_ccs(
@@ -296,6 +297,20 @@ class SCIData(pd.DataFrame):
         result[SCICols.diagnoses] = r
 
         return SCIData(data=result)
+
+    def clean_news(self):
+        """ Re-computes the NEWS score for cases where it is missing (but we have all the components) or it disagrees with the components on-record
+        """
+        brand_news = self[SCICols.news_data_scored].sum(axis=1)
+
+        has_params = self[SCICols.news_data_scored].notna().all(axis=1)
+        has_news = self.c_NEWS_score.notna()
+        mask = (has_params & has_news & (self.c_NEWS_score != brand_news)) | (has_params & ~has_news)
+
+        r = self.copy()
+        r.loc[mask, 'c_NEWS_score'] = brand_news[mask]
+
+        return SCIData(r)
 
     def clean_O2_saturation(self, outlier_threshold_std=3):
         sat, score = "c_O2_saturation", "c_NEWS_O2_sat_score"
@@ -933,6 +948,26 @@ class SCICols:
         "c_Pain",
         "c_Nausea",
         "c_Vomiting_since_last_round",
+    ]
+
+    news_data_raw = [
+        "c_Respiration_rate",
+        "c_Assisted_breathing",
+        "c_O2_saturation",
+        "c_Temperature",
+        "c_BP_Systolic",
+        "c_Heart_rate",
+        "c_Alert",
+    ]
+
+    news_data_scored = [
+        "c_NEWS_resp_rate_score",
+        "c_NEWS_device_air_score",
+        "c_NEWS_O2_sat_score",
+        "c_NEWS_temperature_score",
+        "c_NEWS_BP_score",
+        "c_NEWS_heart_rate_score",
+        "c_NEWS_level_of_con_score",
     ]
 
     icd10_grouping = [
