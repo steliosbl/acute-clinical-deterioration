@@ -1,0 +1,91 @@
+  EAU: 104310.0 - General admissions
+  AEC: 35503.0  - Ambulatory
+  AAA: 19682.0  - Ambulatory
+  AAAC: 18353.0 - Chairs, waiting room
+  HH3: 4101.0   - Renal inpatient ward
+# HH1M: 3969.0  - Medical high dependency
+  L6: 3900.0    
+  M2: 3094.0
+  L3: 2920.0
+  L4: 2810.0
+  PNDS: 2609.0 - Nurse-led discharge unit, low-intensity ward
+  L2: 2470.0
+  HH2: 1955.0  - Respiratory support unit
+  L5: 1782.0
+# HCU: 1718.0  - Heart care
+  L8: 1432.0
+  DISL: 1330.0 
+# CCU: 1226.0
+  RU: 1119.0
+  MA3: 1062.0
+  HH4: 902.0
+  L7: 668.0
+  WPW: 584.0
+  ETW: 578.0
+  B6: 534.0  - Surgical
+  HB1: 525.0
+  HH5: 476.0
+  HB2: 455.0
+  ASU: 415.0
+  B3: 408.0
+  MIU: 404.0
+  ANU: 361.0
+  HG: 352.0
+  THE3: 306.0
+  B8: 281.0
+  LIME: 271.0
+  RCV3: 261.0
+  THE1: 231.0
+  M2SS: 225.0
+  STU: 224.0
+  HH7: 192.0
+  HASU: 182.0
+  B7: 175.0
+  HAEM: 167.0
+  B5: 164.0
+  CPIU: 156.0
+  M2S: 112.0
+  HH6M: 77.0
+  SBU: 75.0
+  SRU: 70.0
+  HAED: 52.0
+  RCV1: 50.0
+  M2SU: 49.0
+  NSSU: 45.0
+  TAU: 33.0
+  C3: 33.0
+  HB2M: 30.0
+  C1: 29.0
+  PDE: 23.0
+  ML: 23.0
+  SAL: 22.0
+  PDCS: 19.0
+  RTU: 18.0
+  DCU: 18.0
+  MET: 16.0
+  RUSS: 16.0
+  HH8: 15.0
+  B4: 14.0
+  L1: 13.0
+  HH1R: 13.0
+  PDB: 11.0
+  PDA: 9.0
+  C2: 8.0
+  HH6: 7.0
+  PDD: 5.0
+  COV1: 5.0
+  SAL1: 4.0
+  GIPU: 4.0
+  GIU: 3.0
+  PDCI: 2.0
+  BRCT: 1.0
+  EPU: 1.0
+  COV2: 1.0
+  CHAS: 1.0
+  BTU: 1.0
+  MSRW: 1.0
+  M1: 1.0
+  RPC: 1.0
+  MA2: 1.0
+  POAU: 1.0
+  CRIU: 1.0

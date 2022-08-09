@@ -252,7 +252,7 @@ class SCIData(pd.DataFrame):
                 "Readmissions not derived - skipping. If you need them, run `derive_readmission` first"
             )
 
-        return SCIData(data=r.drop("value", axis=1, errors='ignore'))
+        return SCIData(data=r.drop("value", axis=1, errors="ignore"))
 
     def derive_main_icd3code(self, force=False):
         """ Derives the 3-Code from the main coded diagnosis
@@ -305,10 +305,12 @@ class SCIData(pd.DataFrame):
 
         has_params = self[SCICols.news_data_scored].notna().all(axis=1)
         has_news = self.c_NEWS_score.notna()
-        mask = (has_params & has_news & (self.c_NEWS_score != brand_news)) | (has_params & ~has_news)
+        mask = (has_params & has_news & (self.c_NEWS_score != brand_news)) | (
+            has_params & ~has_news
+        )
 
         r = self.copy()
-        r.loc[mask, 'c_NEWS_score'] = brand_news[mask]
+        r.loc[mask, "c_NEWS_score"] = brand_news[mask]
 
         return SCIData(r)
 
@@ -861,9 +863,9 @@ class SCICols:
     outcome = [
         "DiedDuringStay",
         "DiedWithin30Days",
-        "DischargeDestination",
         "Readmitted",
         "Mortality",
+        "CriticalCare",
     ]
 
     ae = [
