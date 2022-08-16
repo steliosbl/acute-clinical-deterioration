@@ -314,8 +314,25 @@ class SCIData(pd.DataFrame):
 
         return SCIData(r)
 
+    def clean_breathing_device(self):
+        col = "c_Breathing_device"
+        r = self.copy()
+
+        mask = r[col].notna() & r[col].str.lower().str.startswith("other; nhf")
+        r.loc[mask, col] = "NHF"
+
+        mask = ~(r[col].isin(r[col].value_counts().head(16).index)) & r[col].notna()
+        r.loc[mask, col] = "Other"
+
+        return SCIData(r)
+
     def clean_O2_saturation(self, outlier_threshold_std=3):
-        sat, score = "c_O2_saturation", "c_NEWS_O2_sat_score"
+        sat, score, assisted, device = (
+            "c_O2_saturation",
+            "c_NEWS_O2_sat_score",
+            "c_Assisted_breathing",
+            "c_Breathing_device",
+        )
         r = self.copy()
 
         # Assume negatives were erroneous and make them positive
@@ -338,22 +355,35 @@ class SCIData(pd.DataFrame):
             .any(axis=1)
         )
 
-        # Set outliers without copd and O2 Sat score < 3 to the midpoint of the corresponding score range
-        mask1 = outlier & ~copd
-        r.loc[mask1, sat] = np.nan
+        # Scale 2 will be:
+        scale2 = (
+            (r[SCICols.operations] == "E85.2").any(
+                axis=1
+            )  # Non-invasive ventilation as a procedure code
+            | (
+                r[device] == "NIV - NIV"
+            )  # COPD and assisted breathing with non-invasive ventilation
+            | (
+                copd & (r[device].str.startswith("V"))
+            )  # COPD (per diagnoses) and Venturi assisted breathing
+            | (copd & r[sat] < 88)  # COPD and sats under 88
+        )
+
+        # Outliers not on assisted breathing or with E85.2 and O2 Sat < 3 will be assigned to the midpoint of Scale 1
+        r.loc[outlier & ~scale2, sat] = np.nan
 
         # Set outliers with copd and O2 Sat score = 0 to 92
-        mask2 = outlier & copd & (r[score] == 0)
+        mask2 = outlier & scale2 & (r[score] == 0)
         r.loc[mask2, sat] = 92
 
         # Delete the remaining outliers
-        r.loc[outlier & copd & ~mask2, sat] = np.nan
+        r.loc[outlier & scale2 & ~mask2, sat] = np.nan
 
         # Missing: Populate missing O2 saturation from score if available
         missing_sat_mask = r[sat].isna() & r[score].notna()
         missing_sat_scale1, missing_sat_scale2 = (
-            ~copd & missing_sat_mask,
-            copd & (r[score] == 0) & missing_sat_mask,
+            ~scale2 & missing_sat_mask,
+            scale2 & (r[score] == 0) & missing_sat_mask,
         )
 
         r.loc[missing_sat_scale1, sat] = r.loc[missing_sat_scale1, score].apply(
@@ -364,15 +394,15 @@ class SCIData(pd.DataFrame):
         # Missing: Populate missing O2 score from saturation if available
         missing_score_mask = r[sat].notna() & r[score].isna()
         missing_score_scale1, missing_score_scale2 = (
-            ~copd & missing_score_mask,
-            copd & missing_score_mask,
+            ~scale2 & missing_score_mask,
+            scale2 & missing_score_mask,
         )
 
         r.loc[missing_score_scale1, score] = r.loc[missing_score_scale1, sat].apply(
             NEWS.SpO2_1_Scale
         )
         r.loc[missing_score_scale2, score] = r.loc[missing_score_scale2].apply(
-            lambda row: NEWS.SpO2_2_Scale(row[sat], row["c_Assisted_breathing"]), axis=1
+            lambda row: NEWS.SpO2_2_Scale(row[sat], row[assisted]), axis=1
         )
 
         return SCIData(r)
@@ -386,10 +416,10 @@ class SCIData(pd.DataFrame):
             r.loc[r[col] < 0, col] *= -1
 
         # Delete values outside cutoff range
-        outlier_dia = (r[dia] <= 5) | (r[dia] >= 200)
+        outlier_dia = (r[dia] <= 20) | (r[dia] >= 200)
         r.loc[outlier_dia, dia] = np.nan
 
-        outlier_sys = (r[sys] <= 20) | (r[sys] >= 300) | (r[sys] <= r[dia] + 5)
+        outlier_sys = (r[sys] <= 40) | (r[sys] >= 300) | (r[sys] <= r[dia] + 5)
         r.loc[outlier_sys, sys] = np.nan
 
         # Fill missing values using score and vice versa
@@ -484,7 +514,7 @@ class SCIData(pd.DataFrame):
 
         r.loc[r[value] < 0, value] *= 1
 
-        outliers = (r[value] < 5) | (r[value] > 300)
+        outliers = (r[value] < 25) | (r[value] > 300)
         r.loc[outliers, value] = np.nan
 
         missing_value_mask, missing_score_mask = (
@@ -522,11 +552,26 @@ class SCIData(pd.DataFrame):
 
         return SCIData(r)
 
-    def clean_O2_flow(self):
-        col = "c_Oxygen_flow_rate"
+    def clean_O2_flow_rate(self):
         r = self.copy()
+        flow, device = "c_Oxygen_flow_rate", "c_Breathing_device"
+        lpm_device_mask = r[device].isin(
+            ["A - Air", "N - Nasal cannula", "SM - Simple mask"]
+        )
 
-        r.loc[r[col] > 10, col] /= 10
+        # LPM is:
+        lpm = ((r[flow] >= 1) & (r[flow] <= 15)) | ((r[flow] == 0.5) & lpm_device_mask)
+
+        # Anything over 15 that isnt LPM is a decimal expressed as non-decimal i.e. 36.0 instead of 0.36:
+        decimal = ~lpm & (r[flow] > 15)
+        r.loc[decimal, flow] /= 100
+
+        # Standardise to FiO2
+        fio2 = lambda lpm: (0.2 + lpm * 4) / 100
+        r.loc[lpm, flow] = r.loc[lpm, flow].apply(fio2)
+
+        # Delete remainder
+        r.loc[r[flow] > 1, flow] = np.nan
 
         return SCIData(r)
 
@@ -860,9 +905,12 @@ class SCICols:
         "DischargeWardLOS",
     ]
 
-    outcome = [
+    mortality = [
         "DiedDuringStay",
         "DiedWithin30Days",
+    ]
+
+    outcome = [
         "Readmitted",
         "Mortality",
         "CriticalCare",
@@ -933,6 +981,7 @@ class SCICols:
         "c_Respiration_rate",
         "c_NEWS_resp_rate_score",
         "c_Assisted_breathing",
+        "c_Breathing_device",
         "c_NEWS_device_air_score",
         "c_O2_saturation",
         "c_Oxygen_flow_rate",
@@ -989,14 +1038,14 @@ class SCICols:
             + SCICols.admission
             + SCICols.wards
             + SCICols.ward_los
-            + SCICols.outcome
+            + SCICols.mortality
             + SCICols.ae
             + SCICols.diagnoses
             + SCICols.operations
             + SCICols.hrg
             + SCICols.gp
             + SCICols.blood
-            + SCICols.vgb
+            + SCICols.vbg
             + SCICols.news
             + SCICols.news_data
         )
