@@ -20,6 +20,10 @@ class SCIData(pd.DataFrame):
         """
         return cls(data=pd.read_hdf(file, table))
 
+    def save(self, filename='data/sci_processed.h5'):
+        self.to_hdf(filename, 'table')
+        return self
+
     def derive_all(self, force=False):
         """ Runs all methods to derive handcrafted features from the raw dataset 
         :return: New SCIData instance with the new features added
@@ -38,7 +42,8 @@ class SCIData(pd.DataFrame):
             .clean_consciousness()
             .clean_device_air()
             .clean_heart_rate()
-            .clean_O2_flow()
+            .clean_breathing_device()
+            .clean_O2_flow_rate()
             .clean_O2_saturation()
             .clean_respiration_rate()
             .clean_temperature()
