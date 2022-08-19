@@ -11,6 +11,15 @@ class SCIData(pd.DataFrame):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    @staticmethod
+    def quickload(file, table="table"):
+        """ Loads the specified HDF5 file into Pandas directly. 
+        :param str file: The (local) file path 
+        :param str table: The name of the table to load from the HDF5. By default, 'table' is used.
+        :return: DataFrame
+        """
+        return pd.read_hdf(file, table)
+
     @classmethod
     def load(cls, file, table="table"):
         """ Loads the specified HDF5 file into Pandas. 
@@ -20,8 +29,8 @@ class SCIData(pd.DataFrame):
         """
         return cls(data=pd.read_hdf(file, table))
 
-    def save(self, filename='data/sci_processed.h5'):
-        self.to_hdf(filename, 'table')
+    def save(self, filename="data/sci_processed.h5"):
+        self.to_hdf(filename, "table")
         return self
 
     def derive_all(self, force=False):
@@ -34,6 +43,7 @@ class SCIData(pd.DataFrame):
             .derive_readmission(force=force)
             .derive_criticalcare(force=force)
             .derive_main_icd3code(force=force)
+            .derive_news_risk()
         )
 
     def clean_all(self):
@@ -270,6 +280,16 @@ class SCIData(pd.DataFrame):
         r["MainICD10_3_Code"] = r.MainICD10.str[:3]
 
         return SCIData(data=r)
+
+    def derive_news_risk(self):
+        """ Derives the NEWS clinical risk based on the pre-defined triggers
+        :return: New SCIData instance with the new feature added
+        """
+        r = self.copy()
+
+        mask = r.c_NEWS_score.notna()
+        r.loc[mask, "c_NEWS_risk"] = r.loc[mask, "c_NEWS_score"].apply(NEWS.risk_scale)
+        return SCIData(r)
 
     def filter_vague_diagnoses(self):
         """ Filters out ICD10 codes marked as vague per Hassani15. Remaining diagnoses are shifted to the right.
@@ -681,6 +701,15 @@ def justify(df, invalid_val=np.nan, axis=1, side="left"):
 
 
 class NEWS:
+    @staticmethod
+    def risk_scale(score):
+        if score <= 4:
+            return "Low"
+        elif score <= 6:
+            return "Medium"
+        elif score >= 7:
+            return "High"
+
     @staticmethod
     def SpO2_1_Scale_reverse(score):
         if score == 2:
