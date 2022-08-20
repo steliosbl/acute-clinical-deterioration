@@ -1037,12 +1037,12 @@ class SCICols:
 
     news_data_raw = [
         "c_Respiration_rate",
-        "c_Assisted_breathing",
         "c_O2_saturation",
         "c_Temperature",
         "c_BP_Systolic",
         "c_Heart_rate",
         "c_Alert",
+        "c_Assisted_breathing",
     ]
 
     news_data_scored = [

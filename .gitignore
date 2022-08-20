@@ -142,3 +142,4 @@ runs/*
 checkpoint/*
 samples/*
 sample_cut/*
+images/*
