@@ -1,4 +1,4 @@
-\documentclass[10pt,journal,compsoc]{IEEEtran}
+\documentclass[10pt,journal, compsoc]{IEEEtran}
 \IEEEoverridecommandlockouts
 % The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
 \usepackage{cite}
@@ -7,6 +7,7 @@
 \usepackage{graphicx}
 \usepackage{textcomp}
 \usepackage{xcolor}
+\usepackage{booktabs, array, bm}
 
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
@@ -79,6 +80,42 @@ We investigate the discriminative performance of both the raw NEWS score and the
 We measure correlation between ordinal variables (NEWS and LOS) using Spearman's rank correlation. We compare the means of independent samples of normally distributed variables using Welch's unequal variances t-test, and we use the Mann-Whitney U test for non-normally distributed variables. We present characteristics of variables as $mean \pm std$.
 
 \section{Results}
+Table \ref{tab:result_summary} summarises our findings on the discriminative ability of NEWS for various outcomes.
+\begin{table}[!t]
+    \renewcommand{\arraystretch}{1.3}
+    \centering
+    \caption{Summary of Findings}
+    \label{tab:result_summary}
+    \begin{tabular}{lllr}
+        \toprule
+        Outcome        & Time         & NEWS $\geq 7$ & ROAUC (95\% CI)              \\
+        \midrule
+        Critical Event & 24h          & $51.13\%$     & $\bm{0.914}$ ($0.896-0.932$) \\
+                       & 48h          & $41.24\%$     & $0.890$ ($0.877-0.903$)      \\
+                       & Any          & $16.12\%$     & $0.769$ ($0.763-0.775$)      \\
+        \hline
+        Mortality      & 24h          & $62.01\%$     & $\bm{0.952}$ ($0.936-0.967$) \\
+                       & 48h          & $51.15\%$     & $0.938$ ($0.926-0.95$)       \\
+                       & Any          & $18.67\%$     & $0.770$ ($0.762-0.777$)      \\
+        \hline
+        Critical Care  & 24h          & $26.92\%$     & $\bm{0.831}$ ($0.787-0.874$) \\
+                       & 48h          & $24.64\%$     & $0.8$ ($0.772-0.829$)        \\
+                       & Any          & $15.1\%$      & $0.767$ ($0.758-0.775$)      \\
+        \hline
+        Long LOS       & $\geq$24h    & $2.50\%$      & $0.602$ ($0.598-0.605$)      \\
+                       & $\geq$48h    & $2.72\%$      & $\bm{0.607}$ ($0.604-0.61$)  \\
+                       & $\geq$7 days & $3.25\%$      & $0.598$ ($0.594-0.602$)      \\
+        \hline
+        30-Day Mor/ty  & 24h          & $3.68\%$      & $\bm{0.655}$ ($0.628-0.682$) \\
+                       & 48h          & $3.78\%$      & $0.655$ ($0.634-0.677$)      \\
+                       & Any          & $4.28\%$      & $0.629$ ($0.62-0.638$)       \\
+        \hline
+        Readmission    & 2 days       & $1.14\%$      & $0.496$ ($0.466-0.526$)      \\
+                       & 7 days       & $1.04\%$      & $0.503$ ($0.487-0.52$)       \\
+                       & 30 days      & $1.40\%$      & $\bm{0.532}$ ($0.522-0.541$) \\
+        \bottomrule
+    \end{tabular}
+\end{table}
 \subsection{Population Characteristics} Records of $170833$ admissions were collated, of which $124162$ records, corresponding to $63450$ unique patients, had a NEW score recorded on-admission or computed by us during pre-processing. NEW scores ranges from $0-18$ with a median score of $1.0$ (IQR=$2.0$). Key characteristics of the dataset population are given in Table \ref{tab:population}.
 
 \begin{table}[!t]
@@ -87,9 +124,9 @@ We measure correlation between ordinal variables (NEWS and LOS) using Spearman's
     \caption{SCI dataset key characteristics}
     \label{tab:population}
     \begin{tabular}{l l l}
-        \hline\hline
+        \toprule
         Parameter            & Category              & $n\;(\%)$           \\
-        \hline
+        \midrule
         Sex                  & Female                & $65096\;(52.43\%)$  \\\\
         Admission Method     & Emergency A\&E        & $113518\;(91.43\%)$ \\
                              & Emergency GP Referral & $5955\;(4.8\%)$     \\\\
@@ -102,16 +139,16 @@ We measure correlation between ordinal variables (NEWS and LOS) using Spearman's
                              & Died within 30 Days   & $4086\;(3.29\%)$    \\\\
         Critical Care        & Yes                   & $4371\;(3.52\%)$    \\\\
         Readmitted (30 days) & Yes                   & $15836\;(12.75)$    \\\\
-        NEWS clinical risk   & Low (0-4)             & $118223\;(95.1\%)$  \\
-                             & Medium (5-6)          & $3748\;(3.02\%)$    \\
-                             & High (>= 7)           & $2333\;(1.88\%)$    \\
-        \hline\hline
+        NEWS clinical risk   & Low ($0-4$)           & $118223\;(95.1\%)$  \\
+                             & Medium ($5-6$)        & $3748\;(3.02\%)$    \\
+                             & High ($\geq 7$)       & $2333\;(1.88\%)$    \\
+        \bottomrule
     \end{tabular}
 \end{table}
 
 \subsection{Critical Event Occurrence} The original study on the NEWS' discriminative ability considered death within 24 hours of a given set of observations. We define a "Critical Events" as the occurrence of either critical care admission or death during the hospital spell. Since the vital signs and NEWS in our dataset are measured on admission, we investigate the subsets of hospital spells with total LOS within certain thresholds, such as 24 or 48 hours.
 
-A total of $8826$ with recorded NEWS experienced a critical event, comprising $4371$ critical care admissions and $5308$ deaths. This was significantly correlated with the NEWS for the patient being over the defined threshold for high clinical risk ($p<0.0001$). The AUROCs ($95\%$ CI) of NEWS for critical events in records with 24h LOS, 48h LOS, or any LOS were respectively 0.914 (0.896-0.932), 0.890 (0.877-0.903), and 0.769 (0.763-0.775). The ROC curves are given in figure \ref{fig:criticalevent_roc}. The method for computing the AUROC confidence intervals is given in Appendix \ref{appendix:auroc}.
+A total of $8826$ with recorded NEWS experienced a critical event, comprising $4371$ critical care admissions and $5308$ deaths. The AUROCs ($95\%$ CI) of NEWS for critical events in records with 24h LOS, 48h LOS, or any LOS were respectively $0.914$ ($0.896-0.932$), $0.890$ ($0.877-0.903$), and $0.769$ ($0.763-0.775$). The ROC curves are given in figure \ref{fig:criticalevent_roc}. The method for computing the AUROC confidence intervals is given in Appendix \ref{appendix:auroc}.
 
 \begin{figure*}[htbp]
     \centering
@@ -120,7 +157,7 @@ A total of $8826$ with recorded NEWS experienced a critical event, comprising $4
     \label{fig:criticalevent_roc}
 \end{figure*}
 
-Critical event occurrence significantly correlated with the NEWS at the same LOS thresholds: chi-square with NEWS $\geq 7$: $p < 0.0001$ in all cases. In total, $1423/8826 \; (16\%)$ of critical event occurrences had NEWS $\geq 7$. The full chi-square results are given in Appendix \ref{appendix:stats}. The same appendix gives the results for mortality and critical care admission examined separately.
+Critical event occurrence significantly correlated with the NEWS at the same LOS thresholds: chi-square with NEWS $\geq 7$: $p < 0.0001$ in all cases. In total, $1423/8826$ ($16\%$) of critical event occurrences had NEWS $\geq 7$. Appendix \ref{appendix:criticalevent_breakdown} examines the occurrence of mortality and critical care admission separately.
 
 Patients who experienced critical events were older ($71.72 \pm 16.85$ years; Welch's unequal variances t-test: $p < 0.0001$) and had higher NEWS ($3.51 \pm 3.1$; Mann-Whitney U test: $p < 0.0001$) compared to patients who did not (mean age $64.5 \pm 20.62$ years; NEWS $1.04 \pm 1.4$). The mean total LOS was $16.32 \pm 24.25$ for patients who experienced critical events and $6.07 \pm 13.62$ for those who did not (Mann-Whitney U test: $p < 0.0001$). Table \ref{tab:criticalevent_stats} gives the same information across the tested LOS thresholds.
 
@@ -129,19 +166,27 @@ Patients who experienced critical events were older ($71.72 \pm 16.85$ years; We
     \centering
     \caption{Distribution comparison dep. on critical event occurrence.}
     \label{tab:criticalevent_stats}
-    \begin{tabular}{l l l l l l}
-        \hline\hline
+    \begin{tabular}{llllll}
+        \toprule
         Variable & LOS & Mean (Event)      & Mean ($\lnot$Event) & Test  & $p$   \\
-        \hline
+        \midrule
         Age      & 24h & $71.4 \pm 18.92$  & $57.62 \pm 20.92$   & Welch & $0.0$ \\
                  & 48h & $70.54 \pm 19.56$ & $58.71 \pm 21.09$   &       & $0.0$ \\
                  & Any & $71.72 \pm 16.85$ & $64.5 \pm 20.62$    &       & $0.0$ \\
         NEWS     & 24h & $6.82 \pm 4.38$   & $0.75 \pm 1.07$     & Mann  & $0.0$ \\
                  & 48h & $5.91 \pm 4.18$   & $0.78 \pm 1.1$      &       & $0.0$ \\
                  & Any & $3.51 \pm 3.1$    & $1.04 \pm 1.4$      &       & $0.0$ \\
-        \hline\hline
+
+        \bottomrule
     \end{tabular}
 \end{table}
+
+\subsection{Post-Discharge Mortality}
+The proportion of 30-day mortality in the dataset records was $3.29\%$ ($n=4086$) and corresponds to $6.44\%$ of patients. The AUROCs ($95\%$ CI) of NEWS for 30-day mortality in records with 24h LOS, 48h LOS, or any LOS were respectively $0.655$ ($0.628-0.682$), $0.656$ ($0.634-0.677$), and $0.629$ ($0.62-0.638$). Post-discharge mortality significantly correlated with NEWS at the same LOS thresholds: chi-square with NEWS $\geq 7$: $p < 0.0001$ in all cases. In total, $175/4090$ ($4.28\%$) of occurrences had NEWS $\geq 7$.
+
+Patients who died within 30 days were older ($77.05 \pm 13.10$ years; Welch's unequal variances t-test: $p < 0.0001$) and had higher NEWS ($2.0 \pm 2.11$; Mann-Whitney U test: $p < 0.0001$) compared to patients who survived (mean age $64.6 \pm 20.54$ years; NEWS $1.19 \pm 1.68$). The mean total LOS was $13.49 \pm 18.99$ for patients who died after discharge and $6.57 \pm 14.65$ for survivors (Mann-Whitney U test: $p < 0.0001$). Table \ref{tab:criticalevent_stats} gives the same information across the tested LOS thresholds.
+
+
 
 \onecolumn
 \appendices
@@ -170,5 +215,27 @@ where,
     Q_1 = \frac{AUC}{2-AUC}, \;
     Q_2 = \frac{2AUC^2}{1+AUC}
 \end{equation}
+
+\section{Results for Mortality and Critical Care Admission}
+\label{appendix:criticalevent_breakdown}
+\subsection{Mortality}
+The proportion of in-hospital mortality in the dataset records was $4.28\%$ ($n=5328$) and corresponds to $8.386\%$ of patients. The AUROCs ($95\%$ CI) of NEWS for mortality in records with 24h LOS, 48h LOS, or any LOS were respectively $0.952$ ($0.936-0.967$), $0.938$ ($0.926-0.95$), and $0.770$ ($0.762-0.777$). Mortality significantly correlated with NEWS at the same LOS thresholds: chi-square with NEWS $\geq 7$: $p < 0.0001$ in all cases. In total, $955/5328$ ($17.9\%$) of occurrences had NEWS $\geq 7$.
+\begin{figure*}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{img/mortality_roc.png}
+    \caption{ROC curves of NEWS for discriminating in-hospital mortality with LOS under 24h (left), under 48h (middle), or any LOS (right).}
+    \label{fig:mortality_roc}
+\end{figure*}
+
+\subsection{Critical Care Admission}
+The proportion of critical care admission in the dataset records was $3.53\%$ ($n=4384$) and corresponds to $6.90\%$ of patients. The AUROCs ($95\%$ CI) of NEWS for critical care admission in records with 24h LOS, 48h LOS, or any LOS were respectively $0.831$ ($0.787-0.874$), $0.8$ ($0.772-0.829$), and $0.767$ ($0.758-0.775$). Admission significantly correlated with NEWS at the same LOS thresholds: chi-square with NEWS $\geq 7$: $p < 0.0001$ in all cases. In total, $662/4384$ ($15.1\%$) of occurrences had NEWS $\geq 7$.
+\begin{figure*}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{img/criticalcare_roc.png}
+    \caption{ROC curves of NEWS for discriminating critical care admission in stays with LOS under 24h (left), under 48h (middle), or any LOS (right).}
+    \label{fig:criticalcare_roc}
+\end{figure*}
+
+
 
 \end{document}
