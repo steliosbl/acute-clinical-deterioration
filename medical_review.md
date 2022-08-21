@@ -106,6 +106,8 @@ Mahmoudi et al. also point out transparency as an essential quality.
  - ML methods often use far too many features, leaving open important clinical questions about the implementation and interpretability of the results.
  - Variation in interpretability of ML methods impedes clinical buy-in. 
 
+Smith et al anticipate that methods that use many parameters are more vulnerable to operational error over solutions that use fewer parameters. Operational pressures in the day-to-day workflow may hinder the reliability or timeliness of data.
+
 Levin et al. state that some measured outcomes (e.g. ICU) are inherently variable by hospital (criterio for ICU admission may differ by hospital) so a single-hospital dataset inehrently adapts to the particular hospital. 
  - However, a model can be re-calibrated to instead target particular *objectives*, e.g. shifting the bellcurve away from ambiguous "midpoint" scores. 
 

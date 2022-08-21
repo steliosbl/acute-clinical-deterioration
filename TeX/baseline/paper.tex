@@ -21,10 +21,9 @@
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 \begin{document}
 
-\title{Conference Paper Title\\
-    % {\footnotesize \textsuperscript{*}Note: Sub-titles are not captured in Xplore and
-    % should not be used}
-    % \thanks{Identify applicable funding agency here. If none, delete this.}
+\title{Evaluation of NEWS on the Salford Dataset:\\
+{ACP Baseline Model Report}
+% \thanks{Identify applicable funding agency here. If none, delete this.}
 }
 \author{}
 % \author{\IEEEauthorblockN{1\textsuperscript{st} Given Name Surname}
@@ -41,11 +40,11 @@
 
 \maketitle
 
-\begin{abstract}
-    This document is a model and instructions for \LaTeX.
-    This and the IEEEtran.cls file define the components of your paper [title, text, heads, etc.]. *CRITICAL: Do Not Use Symbols, Special Characters, Footnotes,
-    or Math in Paper Title or Abstract.
-\end{abstract}
+% \begin{abstract}
+%     This document is a model and instructions for \LaTeX.
+%     This and the IEEEtran.cls file define the components of your paper [title, text, heads, etc.]. *CRITICAL: Do Not Use Symbols, Special Characters, Footnotes,
+%     or Math in Paper Title or Abstract.
+% \end{abstract}
 
 \section{Introduction}
 A common practice to gauge patients' physiological condition and acute clinical stability is using basic homeostatic measures like vital signs, haematologic findings, and neurological examinations. Various early warning systems have been proposed that use these measurements to assess whether patients face an imminent risk of deterioration or death \cite{Smith13}.
@@ -54,11 +53,13 @@ The National Early Warning Score (NEWS), developed in conjunction with the Royal
 
 While initially designed to monitor for deterioration in secondary-care, the NEWS has been widely tested and validated across healthcare settings. In its latest revision of the standard, the RCP recommended that the NEWS also be used in emergency departments to "aid the initial assessment of patiens, ongoing monitoring and patient triage decisions" \cite[pp.~18]{RCP17}.
 
-Across studies, the NEWS has been found to perform well in discriminating ward patients at risk of death, critical care admission, or cardiac arrest. The present report introduces the novel SCI dataset, which contains records of adult patients with acute or medical presentation at the Salford Royal NHS Foundation Trust from 2014-2022. We then use this dataset to assess the performance of NEWS in predicting adverse patient outcomes, such as those mentioned above, in the dataset population.
+Across studies, the NEWS has been found to perform well in discriminating ward patients at risk of death, critical care admission, or cardiac arrest. The present report introduces the novel Salford dataset, which contains records of adult patients with acute or medical presentation at the Salford Royal NHS Foundation Trust from 2014-2022. We then use this dataset to assess the performance of NEWS in predicting adverse patient outcomes, such as those mentioned above, in the dataset population.
+
+Further, we investigate the performance of NEWS on post-discharge mortality, lengthy hospital stay, and readmission within certain timeframes. Anticipating these outcomes is in keeping with the main purpose of an EWS: to effectively recognise patients whose condition is deteriorating but can be improved by timely medical intervention  \cite[pp.~4]{Smith13}.
 
 \section{Methodology}
 \subsection{Data Collection and Contents}
-The SCI dataset is collated from EPR records collected in real time from admissions to acute beds between 1st April 2014 and 31st March 2022. Further, the dataset includes administrative data produced in retrospect for financial (tarrif) purposes.
+The Salford dataset is collated from EPR records collected in real time from admissions to acute beds between 1st April 2014 and 31st March 2022. Further, the dataset includes administrative data produced in retrospect for financial (tarrif) purposes.
 
 Our dataset includes records of patients who received ambulatory emergency care (AEC) or same-day emergency care (SDEC) and were discharged before midnight on the day of admission \cite{NHS18}. AEC, alongside the medical admissions unit (EAU)  are the two common entry points for adult patients with general medical emergencies. Exceptions present in our records include certain booked admissions and patients directly transferred and admitted to medical or critical care wards.
 
@@ -129,7 +130,7 @@ Table \ref{tab:result_summary} summarises our findings on the discriminative abi
 \begin{table}[!t]
     \renewcommand{\arraystretch}{1.3}
     \centering
-    \caption{SCI dataset key characteristics}
+    \caption{Salford dataset key characteristics}
     \label{tab:population}
     \begin{tabular}{l l l}
         \toprule
@@ -160,7 +161,7 @@ A total of $8826$ with recorded NEWS experienced a critical event, comprising $4
 
 \begin{figure*}[htbp]
     \centering
-    \includegraphics[width=\textwidth]{img/critical_event_roc.png}
+    \includegraphics[width=\textwidth]{img/critical_roc_multi.png}
     \caption{ROC curves of NEWS for discriminating critical event occurrence in stays with LOS under 24h (left), under 48h (middle), or any LOS (right).}
     \label{fig:criticalevent_roc}
 \end{figure*}
@@ -207,14 +208,16 @@ The original study by the NEWSDIG to evaluate the then-newly-proposed NEWS track
 
 This report evaluated the NEWS against the combined outcome of unplanned critical care admission and death. We found it appropriate to consider these outcomes as one, as we expect both to be preceded by deranged physiology and the clinical response to both events, in terms of urgency and skill, is very similar \cite[pp.~4]{Smith13}. We did not track the occurrence of cardiac arrest, as this was not a parameter recorded in our data. However, the foundational NEWS study by \cite{Smith13} concluded this outcome was of limited use as it is largely indistinguishable from mortality except for the fact that a cardiac arrest team has been called in \cite[pp.~4]{Smith13}.
 
-Our findings regarding the NEWS' discriminative performance are consistent with the previous studies. The NEWS performed best in detecting critical events (in-hospital mortality or admission to critical care). It showed potential in identifying patients at risk of extended hospital stays or post-discharge mortality. The NEWS was not effective in detecting which patients in our data would be readmitted to the same hospital in the future within any amount of time.
+Our findings regarding the NEWS' discriminative performance are consistent with the previous studies. The NEWS performed best in detecting critical events (in-hospital mortality or admission to critical care). It showed potential in identifying patients at risk of extended hospital stays or post-discharge mortality.
+
+The NEWS was not effective in detecting which patients in our data would be readmitted to the same hospital in the future within any amount of time. Prior work has found that clinical data indicating the severity of the patient's condition, including constructed scores, is useful in predicting 30-day readmission \cite[pp.~5]{Mahmoudim20}. Dedicated systems for predicting 30-day readmission, such as the HOSPITAL and LACE score, use parameters that the NEWS does not, such as blood test results, procedures the patient underwent, comorbidities and LOS \cite{Donze13}.
 
 We showed that parameters present in the data other than vital signs (age) differ in their distribution between patients who experienced adverse outcomes and those who did not. In their comparison of EWS, \cite{Smith13} found that existing EWS systems that considered age showed poor discriminative ability in critical care admission compared to death. The authors noted that the observed performance of an EWS on predicting mortality might not line up with the "true" desired property of an EWS: to effectively recognise patients whose condition is deteriorating but can be improved by timely medical intervention rather than those who will likely not survive \cite[pp.~4]{Smith13}. In our view, this makes a strong case for ensuring good discrimination of patients in terms of other adverse outcomes, such as critical care admission, post-discharge mortality, and lengthy hospital stays, to inform and assist clinical decision-making.
 
 In their specification, the NEWSDIG determined it was unnecessary to apply arbitrary weighting to the score based on the patient's age \cite[pp.~19]{RCP17}. Similarly, the NEWS does not consider comorbidities as it is intended to be generic and reflect the physiological perturbations any condition may cause. Given the differing health needs and expected physiological state of patients depending on these excluded factors, we leave the investigation of alternative, stratified early-warning systems as future work.
 
 \subsection{Limitations}
-Our observational dataset is limited to only a single acute care trust. Making definitive statements about the utility of the NEWS requires further validation in different patient populations and clinical settings.
+Our observational dataset is limited to only a single acute care trust. Some measured outcomes and population parameters are inherently variable by hospital. For example, critical care admission may vary between hospitals because each hospital's criteria for admission are different. Making definitive statements about the utility of the NEWS requires further validation in different patient populations and clinical settings.
 
 Patient data were collected primarily by staff under everyday conditions. While this matches the real-life use of the NEWS, operational pressures may hinder the timeliness of data entry and the dataset's reliability. Further, we did not track whether patients had a DNAR order, which can lead to patient death in cases where it otherwise may not have occurred.
 
@@ -226,9 +229,55 @@ A limitation of the dataset was that it only records NEWS measurements taken on 
 
 \onecolumn
 \appendices
-
+\setlength{\parskip}{\baselineskip}%
+\setlength{\parindent}{0pt}%
 \section{Data Pre-processing}
 \label{appendix:preprocessing}
+For the components of the NEWS, we set the ranges given in Table \ref{tab:news_valid_ranges} and we consider values outside these ranges to be invalid.
+Where a value is missing or falls outside these ranges, we replace it with a value inferred from the recorded NEWS sub-score. Specifically, we set it to be the midpoint of the relevant NEWS range. Where the sub-score has not been recorded but the raw value is present (and not invalid), we use the value to compute the NEWS sub-score ourselves.
+
+\begin{table}[h]
+    \renewcommand{\arraystretch}{1.3}
+    \centering
+    \caption{Valid ranges for NEWS components}
+    \label{tab:news_valid_ranges}
+    \begin{tabular}{lll}
+        \toprule
+        Variable         & Range    & Unit        \\
+        \midrule
+        SpO2             & $40-100$ & $\%$        \\
+        Systolic BP      & $40-300$ & mmHg        \\
+        Temperature      & $25-45$  & $^{\circ}C$ \\
+        Pulse            & $25-300$ & Beats/min   \\
+        Respiration Rate & $5-80$   & Breaths/min \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{O2 Saturation (SpO2): } The NEWS-2 specification gives two scales for this parameter \cite[pp.~44]{RCP17}:
+\begin{itemize}
+    \item $SpO2_1$: By default.
+    \item $SpO2_2$: For patients with a prescribed oxygen saturation requirement of $88-92\%$ (e.g., in patients with hypercapnic respiratory failure).
+\end{itemize}
+Since the choice of scale is determined by the responsible clinical staff on a case-by-case basis, we use the following criteria to infer which scale to use when re-computing the NEWS sub-score for SpO2:
+\begin{itemize}
+    \item Anyone receiving oxygen using NIV, as recorded directly or in their set of coded procedures ('E85.2').
+    \item Anyone with COPD (as determined by presence of 'J44.*' in their coded diagnoses) AND is receiving oxygen via Venturi 24 or 28.
+    \item Anyone with COPD (as above) and measured SpO2 $<88\%$.
+\end{itemize}
+Finally, if the patient is receiving supplemental oxygen, there is ambiguity as to whether a high O2 NEWS sub-score indicates very high or very low saturation. In that case, we mark the value as missing.
+
+\textbf{Respiration Rate: } In addition to the range given in Table \ref{tab:news_valid_ranges}, we assume triple-digit values to be erroneous entries of two-digit values (e.g., $250 \rightarrow 25.0$).
+
+\textbf{Oxygen Flow Rate: } This supplemental parameter is enterred in mixed units (Litres/min or FiO2). We translate all values to FiO2 where possible:
+\begin{itemize}
+    \item Values $1-15$ are inferred to be in Litres/min.
+    \item Decimal values are inferred to be FiO2, with the exception of $0.5$.
+    \item Values of $0.5$ and any remaining values are determine based on the device used to deliver the oxygen. Nasal cannula and simple mask correspond to Litres/min, while other devices correspond to FiO2.
+\end{itemize}
+We convert Litres/min to FiO2 using the formula $FiO2 = 0.2 + (Litres/min * 4)/100$.
+
+\newpage
 
 \section{AUROC}
 \label{appendix:auroc}
@@ -240,7 +289,7 @@ For large samples, the distribution of the AUC is approximately normal. Hence, w
     AUC \pm z_{\alpha/2}SE(AUC)
 \end{equation}
 
-The formula for $SE(AUC)$ is [Henley82]:
+The formula for $SE(AUC)$ is \cite{Hanley82}:
 
 \begin{equation}
     SE(AUC) = \sqrt{\frac{AUC(1-AUC) + (N_1-1)(Q_1-AUC^2) + (N_2-1)(Q_2-AUC^2)}{N_1N_2}}
@@ -252,25 +301,12 @@ where,
     Q_2 = \frac{2AUC^2}{1+AUC}
 \end{equation}
 \newpage
-\section{Results for Mortality and Critical Care Admission}
+\section{Extended Results}
 \label{appendix:criticalevent_breakdown}
-\subsection{Mortality}
+\subsection{Mortality \& Critical Care Admission}
 The proportion of in-hospital mortality in the dataset records was $4.28\%$ ($n=5328$) and corresponds to $8.386\%$ of patients. The AUROCs ($95\%$ CI) of NEWS for mortality in records with 24h LOS, 48h LOS, or any LOS were respectively $0.952$ ($0.936-0.967$), $0.938$ ($0.926-0.95$), and $0.770$ ($0.762-0.777$). Mortality significantly correlated with NEWS at the same LOS thresholds: chi-square with NEWS $\geq 7$: $p < 0.0001$ in all cases. In total, $955/5328$ ($17.9\%$) of occurrences had NEWS $\geq 7$.
-\begin{figure*}[htbp]
-    \centering
-    \includegraphics[width=\textwidth]{img/mortality_roc.png}
-    \caption{ROC curves of NEWS for discriminating in-hospital mortality with LOS under 24h (left), under 48h (middle), or any LOS (right).}
-    \label{fig:mortality_roc}
-\end{figure*}
 
-\subsection{Critical Care Admission}
 The proportion of critical care admission in the dataset records was $3.53\%$ ($n=4384$) and corresponds to $6.90\%$ of patients. The AUROCs ($95\%$ CI) of NEWS for critical care admission in records with 24h LOS, 48h LOS, or any LOS were respectively $0.831$ ($0.787-0.874$), $0.8$ ($0.772-0.829$), and $0.767$ ($0.758-0.775$). Admission significantly correlated with NEWS at the same LOS thresholds: chi-square with NEWS $\geq 7$: $p < 0.0001$ in all cases. In total, $662/4384$ ($15.1\%$) of occurrences had NEWS $\geq 7$.
-\begin{figure*}[htbp]
-    \centering
-    \includegraphics[width=\textwidth]{img/criticalcare_roc.png}
-    \caption{ROC curves of NEWS for discriminating critical care admission in stays with LOS under 24h (left), under 48h (middle), or any LOS (right).}
-    \label{fig:criticalcare_roc}
-\end{figure*}
 
 \subsection{ROC for Length of Stay, Post-Discharge Mortality, and Readmission}
 \label{appendix:rocplots}
@@ -294,7 +330,5 @@ The proportion of critical care admission in the dataset records was $3.53\%$ ($
     \caption{ROC curves of NEWS for discriminating readmission within 2 days (left), 7 days (middle), or 30 days (right).}
     \label{fig:readmission_roc}
 \end{figure*}
-
-\section{Discussion}
 
 \end{document}
