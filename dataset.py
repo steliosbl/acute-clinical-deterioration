@@ -218,6 +218,7 @@ class SCIData(pd.DataFrame):
         r["Readmitted"] = (
             timespan_reverse > pd.Timedelta(days=-readmission_thresh)
         ).fillna(False)
+        r["ReadmittedTimespan"] = timespan_reverse*(-1)
 
         return SCIData(data=r)
 

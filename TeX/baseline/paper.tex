@@ -1,13 +1,21 @@
 \documentclass[10pt,journal, compsoc]{IEEEtran}
 \IEEEoverridecommandlockouts
 % The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
-\usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{algorithmic}
 \usepackage{graphicx}
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{booktabs, array, bm}
+
+\usepackage[
+    backend=biber,
+    style=numeric,
+    url=false,
+    isbn=false,
+    doi=false
+  ]{biblatex}
+\addbibresource{references.bib}
 
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
@@ -40,11 +48,11 @@
 \end{abstract}
 
 \section{Introduction}
-A common practice to gauge patients' physiological condition and acute clinical stability is using basic homeostatic measures like vital signs, haematologic findings, and neurological examinations. Various early warning systems have been proposed that use these measurements to assess whether patients face an imminent risk of deterioration or death [Smith13].
+A common practice to gauge patients' physiological condition and acute clinical stability is using basic homeostatic measures like vital signs, haematologic findings, and neurological examinations. Various early warning systems have been proposed that use these measurements to assess whether patients face an imminent risk of deterioration or death \cite{Smith13}.
 
-The National Early Warning Score (NEWS), developed in conjunction with the Royal College of Physicians, has been widely implemented across the NHS and by healthcare providers outside the UK [RCP17, pp.13]. It is a points-based early warning system to identify clinical deterioration in acutely ill patients based on routinely recorded vital signs: pulse, breathing rate, blood pressure, blood oxygen level, level of consciousness, and temperature. The paper-based NEWS allocates points in a weighted manner based on these measurements. The sum of these points, which makes up the patient's aggregate NEW score, is associated with "triggers" - thresholds that correspond to recommended levels of clinical response and monitoring frequency.
+The National Early Warning Score (NEWS), developed in conjunction with the Royal College of Physicians, has been widely implemented across the NHS and by healthcare providers outside the UK \cite[pp.~13]{RCP17}. It is a points-based early warning system to identify clinical deterioration in acutely ill patients based on routinely recorded vital signs: pulse, breathing rate, blood pressure, blood oxygen level, level of consciousness, and temperature. The paper-based NEWS allocates points in a weighted manner based on these measurements. The sum of these points, which makes up the patient's aggregate NEW score, is associated with "triggers" - thresholds that correspond to recommended levels of clinical response and monitoring frequency.
 
-While initially designed to monitor for deterioration in secondary-care, the NEWS has been widely tested and validated across healthcare settings. In its latest revision of the standard, the RCP recommended that the NEWS also be used in emergency departments to "aid the initial assessment of patiens, ongoing monitoring and patient triage decisions" [RCP17, pp.18].
+While initially designed to monitor for deterioration in secondary-care, the NEWS has been widely tested and validated across healthcare settings. In its latest revision of the standard, the RCP recommended that the NEWS also be used in emergency departments to "aid the initial assessment of patiens, ongoing monitoring and patient triage decisions" \cite[pp.~18]{RCP17}.
 
 Across studies, the NEWS has been found to perform well in discriminating ward patients at risk of death, critical care admission, or cardiac arrest. The present report introduces the novel SCI dataset, which contains records of adult patients with acute or medical presentation at the Salford Royal NHS Foundation Trust from 2014-2022. We then use this dataset to assess the performance of NEWS in predicting adverse patient outcomes, such as those mentioned above, in the dataset population.
 
@@ -52,7 +60,7 @@ Across studies, the NEWS has been found to perform well in discriminating ward p
 \subsection{Data Collection and Contents}
 The SCI dataset is collated from EPR records collected in real time from admissions to acute beds between 1st April 2014 and 31st March 2022. Further, the dataset includes administrative data produced in retrospect for financial (tarrif) purposes.
 
-Our dataset includes records of patients who received ambulatory emergency care (AEC) or same-day emergency care (SDEC) and were discharged before midnight on the day of admission [NHS18]. AEC, alongside the medical admissions unit (EAU)  are the two common entry points for adult patients with general medical emergencies. Exceptions present in our records include certain booked admissions and patients directly transferred and admitted to medical or critical care wards.
+Our dataset includes records of patients who received ambulatory emergency care (AEC) or same-day emergency care (SDEC) and were discharged before midnight on the day of admission \cite{NHS18}. AEC, alongside the medical admissions unit (EAU)  are the two common entry points for adult patients with general medical emergencies. Exceptions present in our records include certain booked admissions and patients directly transferred and admitted to medical or critical care wards.
 
 As a routine part of admission, the responsible staff member (nurse or support worker) records the patient's vital signs withing $\sim 30$ minutes of arrival. The vital signs that make up the NEWS are measured simultaneously, in a standardised manner, using Dinamap monitors. The readings are manually transcribed into EPR and onto the patient's paper chart. Specifically, this data includes:
 \begin{itemize}
@@ -71,11 +79,11 @@ Information gathered in retrospect includes the date and time of discharge, tota
 
 Where it occurrs, patient death during their hospitalisation is identified from EPR. Mortality after discharge (within 30 days) is primarily determined from the regional primary care databases (Salford Integrated Records \& Greater Manchester Care Record). Critical care admission is identified from patients being admitted into the hospital's critical care unit (CCU) or the high-dependency medical unit (HH1M).
 
-\subsection{Data Preparation} We perform all data manipulation in Python using the Numpy and Pandas libraries. As they are the only parameters that are transcribed manually into EPR, we check the patients' vital signs for spurious values against hard ranges (e.g., $0-100\%$ for SpO2) as well as soft thresholds that we base on the range of physiologically possible values as determined by professional clinical opinion. For parameters that have a recorded NEWS sub-score but their raw value is missing or marked as spurious, we infer the correct value as the midpoint of the relevant NEWS range. Where a parameter has a valid value but the NEWS sub-score is missing, we compute it in accordance with the specificaton [RCP17, pp.]. We use the same specification to compute the final NEWS score for any patients where this is not recorded in the original data. Full details of how each parameter is pre-processed are available in appendix A.
+\subsection{Data Preparation} We perform all data manipulation in Python using the Numpy and Pandas libraries. As they are the only parameters that are transcribed manually into EPR, we check the patients' vital signs for spurious values against hard ranges (e.g., $0-100\%$ for SpO2) as well as soft thresholds that we base on the range of physiologically possible values as determined by professional clinical opinion. For parameters that have a recorded NEWS sub-score but their raw value is missing or marked as spurious, we infer the correct value as the midpoint of the relevant NEWS range. Where a parameter has a valid value but the NEWS sub-score is missing, we compute it in accordance with the specificaton \cite[pp.~28-30]{RCP17}. We use the same specification to compute the final NEWS score for any patients where this is not recorded in the original data. Full details of how each parameter is pre-processed are available in appendix A.
 
 \subsection{Data Analysis} We assess the ability of NEWS to discriminate between patients who did and did not suffer an adverse outcome using AUROC (area under the ROC curve). We compute this using the scikit-Learn library. The minimum possible AUROC value is $0.5$ and corresponds to a completely random relationship between the score in question and the tracked outcomes. Generally, a score of $0.7-0.8$ indicates reasonable discrimination and values over $0.8$ indicate good discrimination.
 
-We investigate the discriminative performance of both the raw NEWS score and the pre-defined "trigger" thresholds for low, medium, and high clinical risk (NEWS of $0-4$, $5-6$, and $\geq 7$ respectively) [RCP17, pp.30].
+We investigate the discriminative performance of both the raw NEWS score and the pre-defined "trigger" thresholds for low, medium, and high clinical risk (NEWS of $0-4$, $5-6$, and $\geq 7$ respectively) \cite[pp.~30]{RCP17}.
 
 We measure correlation between ordinal variables (NEWS and LOS) using Spearman's rank correlation. We compare the means of independent samples of normally distributed variables using Welch's unequal variances t-test, and we use the Mann-Whitney U test for non-normally distributed variables. We present characteristics of variables as $mean \pm std$.
 
@@ -110,9 +118,9 @@ Table \ref{tab:result_summary} summarises our findings on the discriminative abi
                        & 48h          & $3.78\%$      & $0.655$ ($0.634-0.677$)      \\
                        & Any          & $4.28\%$      & $0.629$ ($0.62-0.638$)       \\
         \hline
-        Readmission    & 2 days       & $1.14\%$      & $0.496$ ($0.466-0.526$)      \\
-                       & 7 days       & $1.04\%$      & $0.503$ ($0.487-0.52$)       \\
-                       & 30 days      & $1.40\%$      & $\bm{0.532}$ ($0.522-0.541$) \\
+        Readmission    & 2 days       & $1.67\%$      & $0.495$ ($0.478-0.511$)      \\
+                       & 7 days       & $1.06\%$      & $0.503$ ($0.482-0.501$)      \\
+                       & 30 days      & $1.31\%$      & $0.523$ ($0.518-0.528$)      \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -181,11 +189,39 @@ Patients who experienced critical events were older ($71.72 \pm 16.85$ years; We
     \end{tabular}
 \end{table}
 
+\subsection{Length of Stay} The total LOS for the patient was significantly correlated with NEWS (Spearman Rank Correlation: $p < 0.0001$). Median length of stay more than doubled for NEWS $\geq 7$ compared to $<7$ ($5.90$ and $2.21$, respectively).
+
+We further investigate whether NEWS can discriminate stays where the LOS will be greater than a certain amount of time; for example, LOS over one day, meaning the patient needs to be monitored overnight. The AUROCs for LOS $\geq$24h, $\geq$48h, and $\geq$7 days were $0.602$ ($0.598-0.605$), $0.607$ ($0.604-0.61$), and $0.598$ ($0.594-0.602$) respectively. LOS at the measured thresholds significantly correlated with NEWS: chi-square with NEWS $\geq 7$: $p < 0.0001$ in all cases.
+
 \subsection{Post-Discharge Mortality}
 The proportion of 30-day mortality in the dataset records was $3.29\%$ ($n=4086$) and corresponds to $6.44\%$ of patients. The AUROCs ($95\%$ CI) of NEWS for 30-day mortality in records with 24h LOS, 48h LOS, or any LOS were respectively $0.655$ ($0.628-0.682$), $0.656$ ($0.634-0.677$), and $0.629$ ($0.62-0.638$). Post-discharge mortality significantly correlated with NEWS at the same LOS thresholds: chi-square with NEWS $\geq 7$: $p < 0.0001$ in all cases. In total, $175/4090$ ($4.28\%$) of occurrences had NEWS $\geq 7$.
 
 Patients who died within 30 days were older ($77.05 \pm 13.10$ years; Welch's unequal variances t-test: $p < 0.0001$) and had higher NEWS ($2.0 \pm 2.11$; Mann-Whitney U test: $p < 0.0001$) compared to patients who survived (mean age $64.6 \pm 20.54$ years; NEWS $1.19 \pm 1.68$). The mean total LOS was $13.49 \pm 18.99$ for patients who died after discharge and $6.57 \pm 14.65$ for survivors (Mann-Whitney U test: $p < 0.0001$). Table \ref{tab:criticalevent_stats} gives the same information across the tested LOS thresholds.
 
+\subsection{Readmission} The proportion of 30-day readmissions in the dataset was $11.26\%$ (n=$14003$). The AUROCs ($95\%$ CI) of NEWS for readmission within 2 days, 7 days, and 30 days were respectively $0.495$ ($0.478-0.511$), $0.491$ ($0.482-0.501$), and $0.523$ ($0.518-0.528$), indicating the NEWS is no better at predicting readmission than random chance. NEWS was not significantly correlated with readmission at any time threshold: chi-square with NEWS $\geq 7$: $p > 0.23$ in all cases.
+
+\section{Discussion}
+We have investigated applying the NEWS to a large vital signs dataset from a single acute care trust, mainly consisting of emergency admissions and not considering elective procedures or surgical admissions.
+
+The original study by the NEWSDIG to evaluate the then-newly-proposed NEWS tracked death within 24 hours of readings and reported an AUROC score of $0.89$. A subsequent study in emergency departments in the Netherlands gave an AUROC score of $0.768$ for 30-day mortality based on the admission NEWS.
+
+This report evaluated the NEWS against the combined outcome of unplanned critical care admission and death. We found it appropriate to consider these outcomes as one, as we expect both to be preceded by deranged physiology and the clinical response to both events, in terms of urgency and skill, is very similar \cite[pp.~4]{Smith13}. We did not track the occurrence of cardiac arrest, as this was not a parameter recorded in our data. However, the foundational NEWS study by \cite{Smith13} concluded this outcome was of limited use as it is largely indistinguishable from mortality except for the fact that a cardiac arrest team has been called in \cite[pp.~4]{Smith13}.
+
+Our findings regarding the NEWS' discriminative performance are consistent with the previous studies. The NEWS performed best in detecting critical events (in-hospital mortality or admission to critical care). It showed potential in identifying patients at risk of extended hospital stays or post-discharge mortality. The NEWS was not effective in detecting which patients in our data would be readmitted to the same hospital in the future within any amount of time.
+
+We showed that parameters present in the data other than vital signs (age) differ in their distribution between patients who experienced adverse outcomes and those who did not. In their comparison of EWS, \cite{Smith13} found that existing EWS systems that considered age showed poor discriminative ability in critical care admission compared to death. The authors noted that the observed performance of an EWS on predicting mortality might not line up with the "true" desired property of an EWS: to effectively recognise patients whose condition is deteriorating but can be improved by timely medical intervention rather than those who will likely not survive \cite[pp.~4]{Smith13}. In our view, this makes a strong case for ensuring good discrimination of patients in terms of other adverse outcomes, such as critical care admission, post-discharge mortality, and lengthy hospital stays, to inform and assist clinical decision-making.
+
+In their specification, the NEWSDIG determined it was unnecessary to apply arbitrary weighting to the score based on the patient's age \cite[pp.~19]{RCP17}. Similarly, the NEWS does not consider comorbidities as it is intended to be generic and reflect the physiological perturbations any condition may cause. Given the differing health needs and expected physiological state of patients depending on these excluded factors, we leave the investigation of alternative, stratified early-warning systems as future work.
+
+\subsection{Limitations}
+Our observational dataset is limited to only a single acute care trust. Making definitive statements about the utility of the NEWS requires further validation in different patient populations and clinical settings.
+
+Patient data were collected primarily by staff under everyday conditions. While this matches the real-life use of the NEWS, operational pressures may hinder the timeliness of data entry and the dataset's reliability. Further, we did not track whether patients had a DNAR order, which can lead to patient death in cases where it otherwise may not have occurred.
+
+A limitation of the dataset was that it only records NEWS measurements taken on admission. To compare with prior studies, we considered adverse event occurrence in hospital stays that lasted under 24 or 48 hours as a proxy for testing NEWS values measured shortly before these events. This practice may induce a bias in our results compared to evaluating the NEWS on data with repeated sets of observations for each patient throughout their hospital stay.
+
+
+\printbibliography
 
 
 \onecolumn
@@ -215,7 +251,7 @@ where,
     Q_1 = \frac{AUC}{2-AUC}, \;
     Q_2 = \frac{2AUC^2}{1+AUC}
 \end{equation}
-
+\newpage
 \section{Results for Mortality and Critical Care Admission}
 \label{appendix:criticalevent_breakdown}
 \subsection{Mortality}
@@ -236,6 +272,29 @@ The proportion of critical care admission in the dataset records was $3.53\%$ ($
     \label{fig:criticalcare_roc}
 \end{figure*}
 
+\subsection{ROC for Length of Stay, Post-Discharge Mortality, and Readmission}
+\label{appendix:rocplots}
+\begin{figure*}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{img/los_roc.png}
+    \caption{ROC curves of NEWS for discriminating LOS $\geq$ 24h (left), 48h (middle), or 7 days (right).}
+    \label{fig:los_roc}
+\end{figure*}
 
+\begin{figure*}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{img/30daymortality_roc.png}
+    \caption{ROC curves of NEWS for discriminating post-discharge mortality in stays with LOS under 24h (left), under 48h (middle), or any LOS (right).}
+    \label{fig:30day_roc}
+\end{figure*}
+
+\begin{figure*}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{img/readmission_roc.png}
+    \caption{ROC curves of NEWS for discriminating readmission within 2 days (left), 7 days (middle), or 30 days (right).}
+    \label{fig:readmission_roc}
+\end{figure*}
+
+\section{Discussion}
 
 \end{document}
