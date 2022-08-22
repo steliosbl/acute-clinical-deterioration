@@ -62,35 +62,100 @@ class SCIData(pd.DataFrame):
             .clean_news()
         )
 
-    def augment_ccs(
-        self,
-        infile="data/ccs.h5",
-        ccs=None,
-        sentinel=[259, "Residual codes; unclassified"],
-    ):
-        """ Joins SCI and the CCS reference table fuzzily.
+    # def augment_ccs_main_only(
+    #     self,
+    #     infile="data/ccs.h5",
+    #     ccs=None,
+    #     sentinel=[259, "Residual codes; unclassified"],
+    # ):
+    #     """ Joins SCI and the CCS reference table fuzzily.
+    #     Codes that can't be matched exactly are matched with their 3-codes
+    #     :param infile: The HDF5 file to load the CCS matching table from
+    #     :param ccs: Pre-loaded CCS match table dataframe
+    #     :param sentinel: What to fill un-matched values with. Default is the code for unclassified/residual codes
+    #     :returns: New SCIData instance with augmented with CCS codes and descriptions
+    #     """
+    #     if ccs is None:
+    #         ccs = pd.read_hdf(infile, "codes")
+
+    #     no_dot = self.MainICD10.str.replace(".", "")
+    #     # Perfect full-ICD10 matches
+    #     r = self.join(ccs, on=no_dot)
+
+    #     # Approximate matches based on first 4 characters (e.g. M4479) or first 3 (e.g. A125)
+    #     approx = (self.join(ccs, on=no_dot.str[:_]) for _ in (3, 4))
+    #     for df in approx:
+    #         mask = df.CCSGroup.notna() & r.CCSGroup.isna()
+    #         r.loc[mask, ccs.columns] = df.loc[mask, ccs.columns]
+
+    #     # Fill remaining values
+    #     remaining = r.CCSGroup.isna() & r.MainICD10.notna()
+    #     r.loc[remaining, ccs.columns] = sentinel
+
+    #     return SCIData(r)
+
+    def augment_ccs(self, infile="data/ccs.h5", ccs=None, sentinel=259, drop_old=True):
+        """ Joins SCI and the CCS reference table fuzzily. Applies to ALL coded diagnoses, not just MainICD10
         Codes that can't be matched exactly are matched with their 3-codes 
         :param infile: The HDF5 file to load the CCS matching table from
         :param ccs: Pre-loaded CCS match table dataframe
         :param sentinel: What to fill un-matched values with. Default is the code for unclassified/residual codes
+        :param drop_old: Whether to keep the old ICD-10
         :returns: New SCIData instance with augmented with CCS codes and descriptions
         """
+        r = self.copy()
         if ccs is None:
             ccs = pd.read_hdf(infile, "codes")
 
-        no_dot = self.MainICD10.str.replace(".", "")
-        # Perfect full-ICD10 matches
-        r = self.join(ccs, on=no_dot)
+        icd = r[SCICols.diagnoses]
+        no_dot = (
+            icd.apply(lambda col: col.str.replace(".", ""))
+            .stack()
+            .rename("icd10")
+            .to_frame()
+        )
 
-        # Approximate matches based on first 4 characters (e.g. M4479) or first 3 (e.g. A125)
-        approx = (self.join(ccs, on=no_dot.str[:_]) for _ in (3, 4))
+        perfect = no_dot.join(ccs, on="icd10").CCSGroup.unstack()
+        approx = (
+            no_dot.apply(lambda col: col.str[:_])
+            .join(ccs, on="icd10")
+            .CCSGroup.unstack()
+            for _ in (3, 4)
+        )
+
         for df in approx:
-            mask = df.CCSGroup.notna() & r.CCSGroup.isna()
-            r.loc[mask, ccs.columns] = df.loc[mask, ccs.columns]
+            mask = df.notna() & perfect.isna() & icd.notna()
+            perfect[mask] = df[mask]
 
-        # Fill remaining values
-        remaining = r.CCSGroup.isna() & r.MainICD10.notna()
-        r.loc[remaining, ccs.columns] = sentinel
+        remaining = perfect.isna() & icd.notna()
+        perfect[remaining] = sentinel
+
+        perfect.columns = SCICols.diagnoses_ccs
+        r[perfect.columns] = perfect
+        if drop_old:
+            r = r.drop(SCICols.diagnoses, axis=1)
+
+        return SCIData(r)
+
+    def _regroup_ccs(self, df, col):
+        """ Joins SCI and a given grouping table for CCS. Must have already matched with CCS groups.
+        """
+        r = self.copy()
+
+        cols = SCICols.diagnoses_ccs
+
+        if not (set(cols) <= set(r.columns)):
+            raise KeyError("No CCS Groups. Must run `augment_ccs` first.")
+
+        joined = (
+            self[cols]
+            .stack()
+            .rename("ccs")
+            .to_frame()
+            .join(df, on="ccs")[col]
+            .unstack()
+        )
+        r[cols] = joined
 
         return SCIData(r)
 
@@ -100,13 +165,25 @@ class SCIData(pd.DataFrame):
         :param ccs: Pre-loaded SHMI match table dataframe
         :returns: New SCIData instance with augmented with SHMI diagnosis groups and descriptions
         """
+        r = self.copy()
         if shmi is None:
             shmi = pd.read_hdf(infile, "shmi")
 
-        if "CCSGroup" not in self:
-            raise KeyError("No CCSGroup. Must run `augment_ccs` first.")
+        return self._regroup_ccs(shmi, "SHMIGroup")
 
-        return SCIData(self.join(shmi, on="CCSGroup"))
+    # def augment_shmi_main_only(self, infile="data/ccs.h5", shmi=None):
+    #     """ Joins SCI and the SHMI matching table. Must have already matched with CCS groups.
+    #     :param infile: The HDF5 file to load the matching table from
+    #     :param ccs: Pre-loaded SHMI match table dataframe
+    #     :returns: New SCIData instance with augmented with SHMI diagnosis groups and descriptions
+    #     """
+    #     if shmi is None:
+    #         shmi = pd.read_hdf(infile, "shmi")
+
+    #     if "CCSGroup" not in self:
+    #         raise KeyError("No CCSGroup. Must run `augment_ccs` first.")
+
+    #     return SCIData(self.join(shmi, on="CCSGroup"))
 
     def augment_hsmr(self, infile="data/ccs.h5", hsmr=None):
         """ Joins SCI and the HSMR matching table. Must have already matched with CCS groups.
@@ -117,10 +194,7 @@ class SCIData(pd.DataFrame):
         if hsmr is None:
             hsmr = pd.read_hdf(infile, "hsmr")
 
-        if "CCSGroup" not in self:
-            raise KeyError("No CCSGroup. Must run `augment_ccs` first.")
-
-        return SCIData(self.join(hsmr, on="CCSGroup"))
+        return self._regroup_ccs(hsmr, "AggregateGroup")
 
     def augment_icd10_grouping(self, infile="data/icd10.h5", icd10=None):
         """ Joins SCI and the ICD-10 chapter & group table.
@@ -218,7 +292,7 @@ class SCIData(pd.DataFrame):
         r["Readmitted"] = (
             timespan_reverse > pd.Timedelta(days=-readmission_thresh)
         ).fillna(False)
-        r["ReadmittedTimespan"] = timespan_reverse*(-1)
+        r["ReadmittedTimespan"] = timespan_reverse * (-1)
 
         return SCIData(data=r)
 
@@ -669,6 +743,91 @@ class SCIData(pd.DataFrame):
 
         return SCIData(result)
 
+    def impute_NEWS(self):
+        """ Fill missing values in the NEWS vital signs with their medians
+            Assume no assisted breathing
+        """
+        r = self.copy()
+
+        # Median (and also mean) of O2 is 97%
+        # BP is Systolic: 124 and Diastolic: 70
+        # Temperature is 36.7
+        # Heart rate is 80
+        for _ in SCICols.news_data_raw[:-2] + ["c_BP_Diastolic"]:
+            r[_].fillna(r[_].median(), inplace=True)
+
+        for _ in SCICols.news_data_scored:
+            r[_].fillna(0, inplace=True)
+
+        r.c_Assisted_breathing.fillna(False, inplace=True)
+        r.c_Breathing_device.fillna("A - Air", inplace=True)
+        r.c_Oxygen_flow_rate.fillna(0.0, inplace=True)
+        r.c_Pain.fillna(False, inplace=True)
+        r.c_Alert.fillna(True, inplace=True)
+        r.c_Nausea.fillna(False, inplace=True)
+        r.c_Vomiting_since_last_round.fillna(False, inplace=True)
+        r.c_Lying_down.fillna(False, inplace=True)
+
+        return SCIData(r)
+
+    def impute_blood(self):
+        r = self.copy()
+        for _ in SCICols.blood:
+            r[_].fillna(r[_].median(), inplace=True)
+
+        return SCIData(r)
+
+    def omit_news(self):
+        return SCIData(self.drop(SCICols.news_data, errors="ignore", axis=1))
+
+    def omit_blood(self):
+        return SCIData(self.drop(SCICols.blood, errors="ignore", axis=1))
+
+    def omit_vbg(self):
+        return SCIData(self.drop(SCICols.vbg, errors="ignore", axis=1))
+
+    def omit_redundant(self):
+        return SCIData(
+            self.drop(
+                SCICols.admin
+                + SCICols.duration
+                + SCICols.wards
+                + SCICols.ward_los
+                + SCICols.outcome
+                + SCICols.mortality
+                + SCICols.operations
+                + SCICols.hrg
+                + SCICols.gp
+                + SCICols.news
+                + ["Area", "AandEArrivalTime", "AandEDepartureTime", "c_NEWS_risk"]
+                + [
+                    "Covid",
+                    "ReadmissionTimespan",
+                    "ReadmittedTimespan",
+                    "CriticalReadmitted",
+                ],
+                axis=1,
+                errors="ignore",
+            )
+        )
+
+    def encode_ccs_onehot(self, drop_old=True):
+        if not (set(SCICols.diagnoses_ccs) <= set(self.columns)):
+            raise KeyError("No CCS Groups. Must run `augment_ccs` first.")
+
+        r = self.copy()
+        encoded = (
+            pd.get_dummies(r[SCICols.diagnoses_ccs].stack(), prefix="CCS")
+            .groupby(level=0)
+            .any()
+        )
+
+        r = pd.concat([r, encoded], axis=1)
+        if drop_old:
+            r = r.drop(SCICols.diagnoses_ccs, axis=1)
+
+        return SCIData(r)
+
 
 def justify(df, invalid_val=np.nan, axis=1, side="left"):
     """
@@ -968,6 +1127,16 @@ class SCICols:
         "SecDiag4",
         "SecDiag5",
         "SecDiag6",
+    ]
+
+    diagnoses_ccs = [
+        "MainCCS",
+        "SecCCS1",
+        "SecCCS2",
+        "SecCCS3",
+        "SecCCS4",
+        "SecCCS5",
+        "SecCCS6",
     ]
 
     operations = [
