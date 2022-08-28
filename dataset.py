@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
+from sklearn.base import BaseEstimator, TransformerMixin
+
 
 class SCIData(pd.DataFrame):
     """ Represents the SCI dataset and related methods to augment or filter it """
@@ -42,7 +44,7 @@ class SCIData(pd.DataFrame):
             .derive_mortality(force=force)
             .derive_readmission(force=force)
             .derive_criticalcare(force=force)
-            .derive_main_icd3code(force=force)
+            # .derive_main_icd3code(force=force)
             .derive_news_risk()
         )
 
@@ -62,45 +64,13 @@ class SCIData(pd.DataFrame):
             .clean_news()
         )
 
-    # def augment_ccs_main_only(
-    #     self,
-    #     infile="data/ccs.h5",
-    #     ccs=None,
-    #     sentinel=[259, "Residual codes; unclassified"],
-    # ):
-    #     """ Joins SCI and the CCS reference table fuzzily.
-    #     Codes that can't be matched exactly are matched with their 3-codes
-    #     :param infile: The HDF5 file to load the CCS matching table from
-    #     :param ccs: Pre-loaded CCS match table dataframe
-    #     :param sentinel: What to fill un-matched values with. Default is the code for unclassified/residual codes
-    #     :returns: New SCIData instance with augmented with CCS codes and descriptions
-    #     """
-    #     if ccs is None:
-    #         ccs = pd.read_hdf(infile, "codes")
-
-    #     no_dot = self.MainICD10.str.replace(".", "")
-    #     # Perfect full-ICD10 matches
-    #     r = self.join(ccs, on=no_dot)
-
-    #     # Approximate matches based on first 4 characters (e.g. M4479) or first 3 (e.g. A125)
-    #     approx = (self.join(ccs, on=no_dot.str[:_]) for _ in (3, 4))
-    #     for df in approx:
-    #         mask = df.CCSGroup.notna() & r.CCSGroup.isna()
-    #         r.loc[mask, ccs.columns] = df.loc[mask, ccs.columns]
-
-    #     # Fill remaining values
-    #     remaining = r.CCSGroup.isna() & r.MainICD10.notna()
-    #     r.loc[remaining, ccs.columns] = sentinel
-
-    #     return SCIData(r)
-
-    def augment_ccs(self, infile="data/ccs.h5", ccs=None, sentinel=259, drop_old=True):
+    def augment_ccs(self, infile="data/ccs.h5", ccs=None, sentinel=259, onehot=False):
         """ Joins SCI and the CCS reference table fuzzily. Applies to ALL coded diagnoses, not just MainICD10
         Codes that can't be matched exactly are matched with their 3-codes 
         :param infile: The HDF5 file to load the CCS matching table from
         :param ccs: Pre-loaded CCS match table dataframe
         :param sentinel: What to fill un-matched values with. Default is the code for unclassified/residual codes
-        :param drop_old: Whether to keep the old ICD-10
+        :param onehot: Whether to onehot encode the groupings
         :returns: New SCIData instance with augmented with CCS codes and descriptions
         """
         r = self.copy()
@@ -130,63 +100,46 @@ class SCIData(pd.DataFrame):
         remaining = perfect.isna() & icd.notna()
         perfect[remaining] = sentinel
 
-        perfect.columns = SCICols.diagnoses_ccs
+        perfect.columns = SCICols.diagnoses
         r[perfect.columns] = perfect
-        if drop_old:
-            r = r.drop(SCICols.diagnoses, axis=1)
+
+        if onehot:
+            r = r.encode_ccs_onehot()
 
         return SCIData(r)
 
-    def _regroup_ccs(self, df, col):
-        """ Joins SCI and a given grouping table for CCS. Must have already matched with CCS groups.
+    def _regroup_ccs(self, df, col, onehot=False):
+        """ Joins SCI and a given grouping table for CCS. Matches ICD-10 diagnoses with CCS if this has not already been done
+        :param df: The CCS grouping table (SHMI or HSMR)
+        :param col: The column from the matching table to keep
+        :param onehot: Whether to onehot encode the result
         """
-        r = self.copy()
-
-        cols = SCICols.diagnoses_ccs
-
-        if not (set(cols) <= set(r.columns)):
-            raise KeyError("No CCS Groups. Must run `augment_ccs` first.")
-
+        r = self.augment_ccs()
+        cols = SCICols.diagnoses
         joined = (
-            self[cols]
-            .stack()
-            .rename("ccs")
-            .to_frame()
-            .join(df, on="ccs")[col]
-            .unstack()
+            r[cols].stack().rename("ccs").to_frame().join(df, on="ccs")[col].unstack()
         )
         r[cols] = joined
 
+        if onehot:
+            r = r.encode_ccs_onehot()
+
         return SCIData(r)
 
-    def augment_shmi(self, infile="data/ccs.h5", shmi=None):
-        """ Joins SCI and the SHMI matching table. Must have already matched with CCS groups.
+    def augment_shmi(self, infile="data/ccs.h5", shmi=None, onehot=False):
+        """ Joins SCI and the SHMI matching table.
         :param infile: The HDF5 file to load the matching table from
         :param ccs: Pre-loaded SHMI match table dataframe
+        :param onehot: Whether to onehot encode the groupings
         :returns: New SCIData instance with augmented with SHMI diagnosis groups and descriptions
         """
-        r = self.copy()
         if shmi is None:
             shmi = pd.read_hdf(infile, "shmi")
 
-        return self._regroup_ccs(shmi, "SHMIGroup")
+        return self._regroup_ccs(shmi, "SHMIGroup", onehot=onehot)
 
-    # def augment_shmi_main_only(self, infile="data/ccs.h5", shmi=None):
-    #     """ Joins SCI and the SHMI matching table. Must have already matched with CCS groups.
-    #     :param infile: The HDF5 file to load the matching table from
-    #     :param ccs: Pre-loaded SHMI match table dataframe
-    #     :returns: New SCIData instance with augmented with SHMI diagnosis groups and descriptions
-    #     """
-    #     if shmi is None:
-    #         shmi = pd.read_hdf(infile, "shmi")
-
-    #     if "CCSGroup" not in self:
-    #         raise KeyError("No CCSGroup. Must run `augment_ccs` first.")
-
-    #     return SCIData(self.join(shmi, on="CCSGroup"))
-
-    def augment_hsmr(self, infile="data/ccs.h5", hsmr=None):
-        """ Joins SCI and the HSMR matching table. Must have already matched with CCS groups.
+    def augment_hsmr(self, infile="data/ccs.h5", hsmr=None, onehot=False):
+        """ Joins SCI and the HSMR matching table
         :param infile: The HDF5 file to load the matching table from
         :param hsmr: Pre-loaded HSMR match table dataframe
         :returns: New SCIData instance with augmented with HSMR aggregate groups and descriptions
@@ -194,18 +147,45 @@ class SCIData(pd.DataFrame):
         if hsmr is None:
             hsmr = pd.read_hdf(infile, "hsmr")
 
-        return self._regroup_ccs(hsmr, "AggregateGroup")
+        return self._regroup_ccs(hsmr, "AggregateGroup", onehot=onehot)
 
-    def augment_icd10_grouping(self, infile="data/icd10.h5", icd10=None):
+    def augment_icd10(
+        self, infile="data/icd10.h5", icd10=None, keep=None, onehot=False, drop_old=True
+    ):
         """ Joins SCI and the ICD-10 chapter & group table.
         :param infile: The HDF5 file to load the table from
-        :param hsmr: Pre-loaded ICD-10 table dataframe
+        :param icd10: Pre-loaded ICD-10 table dataframe
+        :param keep: Columns to keep from the new grouping. If None, will keep them all
+        :param onehot: Whether to onehot encode the result
+        :param drop_old: Whether to drop the original coded diagnoses
         :returns: New SCIData instance with augmented with ICD-10 groups and chapters
         """
         if icd10 is None:
             icd10 = pd.read_hdf(infile, "ICD10_3_Codes")
 
-        return SCIData(self.join(icd10, on=self.MainICD10.str[:3]))
+        r = self.join(icd10, on=self.MainICD10.str[:3])
+
+        if keep is not None:
+            r = r.drop(set(SCICols.icd10_grouping) - set(keep), axis=1)
+
+        if drop_old:
+            r = r.drop(SCICols.diagnoses, axis=1, errors="ignore")
+
+        if onehot:
+            return SCIData(r).encode_onehot(keep, "ICD10", drop_old)
+
+        return SCIData(r)
+
+    def augment_icd10_group(self, onehot=False, drop_old=True):
+        return self.augment_icd10(keep=["Group_Code"], onehot=onehot, drop_old=drop_old)
+
+    def augment_icd10_chapter(self, onehot=False, drop_old=True):
+        return self.augment_icd10(keep=["Chapter_No"], onehot=onehot, drop_old=drop_old)
+
+    def augment_icd10_3code(self, onehot=False, drop_old=True):
+        return self.augment_icd10(
+            keep=["MainICD10_3_Code"], onehot=onehot, drop_old=drop_old
+        )
 
     def augment_icd10_descriptions(self, infile="data/icd10.h5", icd10=None):
         """ Joins SCI and the ICD-10 code table.
@@ -285,6 +265,7 @@ class SCIData(pd.DataFrame):
             pd.cut(r.ReadmissionTimespan, bins, labels=labels)
             .astype(str)
             .replace("nan", np.nan)
+            .fillna("N/A")
         )
         r["Readmission"] = r.ReadmissionTimespan < pd.Timedelta(days=readmission_thresh)
 
@@ -693,6 +674,11 @@ class SCIData(pd.DataFrame):
             r[col] = r[col].str.lower().str.strip(" .?+")
             r.loc[r[col].isin(vague), col] = np.nan
 
+        mask = ~r[complaint].isin(r[complaint].value_counts().head(50).index)
+        r.loc[mask, complaint] = np.nan
+
+        r[complaint].fillna("other", inplace=True)
+
         return SCIData(r)
 
     def clean_ae_patient_group(self):
@@ -743,7 +729,7 @@ class SCIData(pd.DataFrame):
 
         return SCIData(result)
 
-    def impute_NEWS(self):
+    def impute_news(self):
         """ Fill missing values in the NEWS vital signs with their medians
             Assume no assisted breathing
         """
@@ -777,56 +763,120 @@ class SCIData(pd.DataFrame):
 
         return SCIData(r)
 
+    def omit(self, cols):
+        return SCIData(self.drop(cols, errors="ignore", axis=1))
+
     def omit_news(self):
-        return SCIData(self.drop(SCICols.news_data, errors="ignore", axis=1))
+        return self.omit(SCICols.news_data)
 
     def omit_blood(self):
-        return SCIData(self.drop(SCICols.blood, errors="ignore", axis=1))
+        return self.omit(SCICols.blood)
 
     def omit_vbg(self):
-        return SCIData(self.drop(SCICols.vbg, errors="ignore", axis=1))
+        return self.omit(SCICols.vbg)
 
     def omit_redundant(self):
+        return self.omit(
+            SCICols.admin
+            + SCICols.duration
+            + SCICols.wards
+            + SCICols.ward_los
+            + SCICols.operations
+            + SCICols.hrg
+            + SCICols.gp
+            + SCICols.news
+            + ["Area", "AandEArrivalTime", "AandEDepartureTime", "c_NEWS_risk"]
+            + [
+                "Covid",
+                "ReadmissionTimespan",
+                "ReadmittedTimespan",
+                "CriticalReadmitted",
+            ]
+        )
+
+    def omit_ae(self):
+        return self.omit(
+            ["AandEMainDiagnosis", "AandEPatientGroupDescription", "AandELocation"]
+        )
+
+    def raw_news(self):
+        return SCIData(self.drop(SCICols.news_data_scored, axis=1, errors="ignore"))
+
+    def scored_news(self):
+        return SCIData(self.drop(SCICols.news_data_raw, axis=1, errors="ignore"))
+
+    def encode_onehot(self, cols, prefix, drop_old=True):
+        """ Given a set of columns, one-hot encodes them and concatenates to the DataFrame
+        :param cols: The columns to encode
+        :param prefix: What to call the new columns
+        :param drop_old: Whether to drop the original columns after concatenating the encoded ones
+        :returns: SCIData instance with the new columns
+        """
+        if not (set(cols) <= set(self.columns)):
+            raise KeyError(
+                f"Some of the given columns do not exist: {set(cols)-set(self.columns)}"
+            )
+
+        encoded = (
+            pd.get_dummies(self[cols].stack(), prefix=prefix).groupby(level=0).any()
+        )
+
+        r = pd.concat([self, encoded], axis=1)
+        if drop_old:
+            r = r.drop(cols, axis=1)
+
+        return SCIData(r)
+
+    def encode_ccs_onehot(self, drop_old=True):
+        """ Given DataFrame augmented with CCS groupings (CCS, SHMI, or HSMR), one-hot encodes them
+        """
+
+        r = self.encode_onehot(SCICols.diagnoses, "CCS", drop_old)
+        r = r.rename(columns={_: _[:-2] for _ in r.columns if _.startswith("CCS_")})
+
+        return r
+
+    def mandate(self, cols):
+        return SCIData(self.drop(cols, axis=1, errors="ignore"))
+
+    def mandate_diagnoses(self):
         return SCIData(
-            self.drop(
-                SCICols.admin
-                + SCICols.duration
-                + SCICols.wards
-                + SCICols.ward_los
-                + SCICols.outcome
-                + SCICols.mortality
-                + SCICols.operations
-                + SCICols.hrg
-                + SCICols.gp
-                + SCICols.news
-                + ["Area", "AandEArrivalTime", "AandEDepartureTime", "c_NEWS_risk"]
-                + [
-                    "Covid",
-                    "ReadmissionTimespan",
-                    "ReadmittedTimespan",
-                    "CriticalReadmitted",
-                ],
-                axis=1,
-                errors="ignore",
+            self.dropna(
+                how="any",
+                subset=set(
+                    SCICols.diagnoses_ccs_encoded + SCICols.diagnoses
+                ).intersection(self.columns),
             )
         )
 
-    def encode_ccs_onehot(self, drop_old=True):
-        if not (set(SCICols.diagnoses_ccs) <= set(self.columns)):
-            raise KeyError("No CCS Groups. Must run `augment_ccs` first.")
+    def preprocess_from_params(self, **kwargs):
+        r = self
+        for _ in ["news", "blood"]:
+            v = kwargs.get(f"{_}_columns")
+            if v is not None:
+                r = getattr(r, f"{v}_{_}")()
 
-        r = self.copy()
-        encoded = (
-            pd.get_dummies(r[SCICols.diagnoses_ccs].stack(), prefix="CCS")
-            .groupby(level=0)
-            .any()
+        v = kwargs.get("news_format")
+        if v == "raw":
+            r = r.raw_news()
+        elif v == "scored":
+            r = r.scored_news()
+
+        v, e = kwargs.get("diagnoses_grouping"), kwargs.get("diagnoses_onehot", False)
+        if v is not None:
+            r = getattr(r, f"augment_{v}")(onehot=e)
+
+        r = r.mandate_diagnoses()
+        return r.xy()
+
+    def xy(self, outcome="DiedDuringStay"):
+        X, y = (
+            self.drop(
+                SCICols.outcome + SCICols.mortality + [outcome], axis=1, errors="ignore"
+            ),
+            self[outcome].copy().to_numpy(),
         )
-
-        r = pd.concat([r, encoded], axis=1)
-        if drop_old:
-            r = r.drop(SCICols.diagnoses_ccs, axis=1)
-
-        return SCIData(r)
+        return SCIData(X), y
 
 
 def justify(df, invalid_val=np.nan, axis=1, side="left"):
@@ -1129,15 +1179,7 @@ class SCICols:
         "SecDiag6",
     ]
 
-    diagnoses_ccs = [
-        "MainCCS",
-        "SecCCS1",
-        "SecCCS2",
-        "SecCCS3",
-        "SecCCS4",
-        "SecCCS5",
-        "SecCCS6",
-    ]
+    diagnoses_ccs_encoded = [f"CCS_{_}" for _ in range(1, 18)]
 
     operations = [
         "MainOPCS4",
@@ -1231,6 +1273,7 @@ class SCICols:
         "Group_Code",
         "Group_Desc",
         "ICD10_3_Code_Desc",
+        "MainICD10_3_Code",
     ]
 
     @staticmethod
