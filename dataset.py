@@ -31,20 +31,23 @@ class SCIData(pd.DataFrame):
         """
         return cls(data=pd.read_hdf(file, table))
 
+    @classmethod
+    def fromxy(cls, X, y):
+        return cls(pd.concat([X, pd.Series(y, name="y")], axis=1))
+
     def save(self, filename="data/sci_processed.h5"):
         self.to_hdf(filename, "table")
         return self
 
-    def derive_all(self, force=False):
+    def derive_all(self):
         """ Runs all methods to derive handcrafted features from the raw dataset 
         :return: New SCIData instance with the new features added
         """
         return (
-            self.derive_covid_strict(force=force)
-            .derive_mortality(force=force)
-            .derive_readmission(force=force)
-            .derive_criticalcare(force=force)
-            # .derive_main_icd3code(force=force)
+            self.derive_covid_strict()
+            .derive_mortality()
+            .derive_readmission()
+            .derive_critical_care()
             .derive_news_risk()
         )
 
@@ -79,7 +82,7 @@ class SCIData(pd.DataFrame):
 
         icd = r[SCICols.diagnoses]
         no_dot = (
-            icd.apply(lambda col: col.str.replace(".", ""))
+            icd.apply(lambda col: col.str.replace(".", "", regex=False))
             .stack()
             .rename("icd10")
             .to_frame()
@@ -199,18 +202,12 @@ class SCIData(pd.DataFrame):
         return SCIData(self.join(icd10, on="MainICD10"))
 
     def derive_covid(
-        self,
-        covid_codes=["U07.1", "J12.8", "B97.2"],
-        start_date="2020-01-01",
-        force=False,
+        self, covid_codes=["U07.1", "J12.8", "B97.2"], start_date="2020-01-01",
     ):
         """ Derives a binary feature indicating whether the patient had COVID-19, based on their coded diagnoses.
         :param covid_codes: The ICD-10 codes to look for. 
         :return: New SCIData instance with the new feature added
         """
-        if "Covid" in self and not force:
-            return self
-
         year_mask = self.AdmissionDateTime >= start_date
         covid_mask = self[SCICols.diagnoses].isin(covid_codes).any(axis=1)
 
@@ -218,13 +215,10 @@ class SCIData(pd.DataFrame):
         r["Covid"] = year_mask & covid_mask
         return SCIData(data=r)
 
-    def derive_covid_strict(self, covid_codes=["U07.1", "J12.8", "B97.2"], force=False):
+    def derive_covid_strict(self, covid_codes=["U07.1", "J12.8", "B97.2"]):
         """ Derives a binary feature indicating whether the patient had COVID-19 based on the entire ICD10 code combination.
         :return: New SCIData instance with the new feature added
         """
-        if "Covid" in self and not force:
-            return self
-
         covid_mask = self[SCICols.diagnoses].apply(frozenset, axis=1) >= frozenset(
             covid_codes
         )
@@ -238,22 +232,12 @@ class SCIData(pd.DataFrame):
         bins=[0, 1, 2, 7, 14, 30, 60],
         labels=["24 Hrs", "48 Hrs", "1 Week", "2 Weeks", "1 Month", "2 Months"],
         readmission_thresh=30,
-        force=False,
     ):
         """Determines the timespan since the patient's last admission. Bins readmissions into bands.
         :param bins: Bin edges for readmission bands
         :param labels: String labels for the returned bands
         :return: New SCIData instance with the new features added
         """
-        if (
-            all(
-                _ in self
-                for _ in ["ReadmissionTimespan", "ReadmissionBand", "Readmission"]
-            )
-            and not force
-        ):
-            return self
-
         bins = [pd.Timedelta(days=_) for _ in bins]
 
         r = self.copy()
@@ -277,65 +261,56 @@ class SCIData(pd.DataFrame):
 
         return SCIData(data=r)
 
-    def derive_mortality(self, force=False):
-        """ Determines the patients' mortality outcome. Can be ['DiedDuringStay', 'DiedWithin30Days', 'DidNotDie']
+    def derive_mortality(self, within=1, col_name="DiedWithinThreshold"):
+        """ Determines the patients' mortality outcome. 
+        :param within: Time since admission to consider a death. E.g., 1.0 means died within 24 hours, otherwise lived past 24 hours
         :return: New SCIData instance with the new feature added
         """
-        if "Mortality" in self and not force:
-            return self
+        r = self.copy()
+        r[col_name] = r.DiedDuringStay & (r.TotalLOS <= within)
 
-        m = self[["DiedDuringStay", "DiedWithin30Days"]].copy()
+        m = r[["DiedDuringStay", "DiedWithin30Days", col_name]].copy()
+        m["DiedDuringStay"] = m["DiedDuringStay"] & (~m[col_name])
         m["DidNotDie"] = ~m.any(axis=1)
 
-        r = self.copy()
         r["Mortality"] = m.dot(m.columns)
         return SCIData(data=r)
 
-    def derive_criticalcare(self, critical_wards=["CCU", "HH1M"], force=False):
+    def derive_critical_care(
+        self,
+        critical_wards=["CCU", "HH1M"],
+        within=1,
+        col_name="CriticalCareWithinThreshold",
+    ):
         """ Determines admission to critical care at any point during the spell as indicated by admission to specified wards
         :param critical_wards: The wards to search for. By default, ['CCU', 'HH1M']
+        :param within: Threshold of maximum LOS to consider events for. Critical care admission that occurs after this value won't be counted.
         :return: New SCIData instance with the new features added
         """
-        if "CriticalCare" in self and not force:
-            return self
-
         r = self.copy()
-        r["CriticalCare"] = r[SCICols.wards].isin(critical_wards).any(axis=1)
+        m = r[SCICols.wards].isin(critical_wards)
+        column_where_critical_appeared = m.idxmax(axis=1).where(m.any(1)).dropna()
+        los_on_critical_admission = (
+            r[SCICols.ward_los]
+            .stack()
+            .groupby(level=0)
+            .cumsum()
+            .loc[
+                list(
+                    zip(
+                        column_where_critical_appeared.index,
+                        column_where_critical_appeared + "LOS",
+                    )
+                )
+            ]
+        )
+        los_on_critical_admission.index = los_on_critical_admission.index.droplevel(1)
 
-        if "Readmission" in self:
-            wm = r.melt(id_vars="SpellSerial", value_vars=SCICols.wards).drop(
-                "variable", axis=1
-            )
-            wm = wm[wm.value.isin(critical_wards)].drop_duplicates()
-            r = r.merge(
-                wm[wm.duplicated()],
-                how="left",
-                indicator=True,
-                left_on="SpellSerial",
-                right_on="SpellSerial",
-            ).rename(columns={"_merge": "CriticalReadmission"})
-            r.CriticalReadmission = r.CriticalReadmission.eq("both") | (
-                r.Readmission & r.CriticalCare
-            )
-            r["CriticalReadmitted"] = r.Readmitted & r.CriticalCare
-        else:
-            print(
-                "Readmissions not derived - skipping. If you need them, run `derive_readmission` first"
-            )
+        r["CriticalCare"] = m.any(axis=1)
+        r[col_name] = los_on_critical_admission <= within
+        r[col_name].fillna(False, inplace=True)
 
-        return SCIData(data=r.drop("value", axis=1, errors="ignore"))
-
-    def derive_main_icd3code(self, force=False):
-        """ Derives the 3-Code from the main coded diagnosis
-        :return: New SCIData instance with the new feature added
-        """
-        if "MainICD10_3_Code" in self and not force:
-            return self
-
-        r = self.copy()
-        r["MainICD10_3_Code"] = r.MainICD10.str[:3]
-
-        return SCIData(data=r)
+        return SCIData(r)
 
     def derive_news_risk(self):
         """ Derives the NEWS clinical risk based on the pre-defined triggers
@@ -832,22 +807,28 @@ class SCIData(pd.DataFrame):
         """
 
         r = self.encode_onehot(SCICols.diagnoses, "CCS", drop_old)
-        r = r.rename(columns={_: _[:-2] for _ in r.columns if _.startswith("CCS_")})
+        r = r.rename(
+            columns={_: str(_)[:-2] for _ in r.columns if str(_).startswith("CCS_")}
+        )
 
         return r
 
+    def derive_critical_event(self):
+        r = self.copy()
+        r["CriticalEvent"] = r.DiedDuringStay | r.CriticalCare
+
+        return SCIData(r)
+
     def mandate(self, cols):
-        return SCIData(self.drop(cols, axis=1, errors="ignore"))
+        return SCIData(
+            self.dropna(how="any", subset=set(cols).intersection(self.columns),)
+        )
 
     def mandate_diagnoses(self):
-        return SCIData(
-            self.dropna(
-                how="any",
-                subset=set(
-                    SCICols.diagnoses_ccs_encoded + SCICols.diagnoses
-                ).intersection(self.columns),
-            )
-        )
+        return self.mandate(SCICols.diagnoses_ccs_encoded + SCICols.diagnoses)
+
+    def mandate_news(self):
+        return self.mandate(SCICols.news_data)
 
     def preprocess_from_params(self, **kwargs):
         r = self
@@ -871,9 +852,7 @@ class SCIData(pd.DataFrame):
 
     def xy(self, outcome="DiedDuringStay"):
         X, y = (
-            self.drop(
-                SCICols.outcome + SCICols.mortality + [outcome], axis=1, errors="ignore"
-            ),
+            self.drop(SCICols.outcome + [outcome], axis=1, errors="ignore"),
             self[outcome].copy().to_numpy(),
         )
         return SCIData(X), y
@@ -1137,15 +1116,15 @@ class SCICols:
     ]
 
     ward_los = [
-        "AdmissionWardLOS",
-        "NextWardLOS2",
-        "NextWardLOS3",
-        "NextWardLOS4",
-        "NextWardLOS5",
-        "NextWardLOS6",
-        "NextWardLOS7",
-        "NextWardLOS8",
-        "NextWardLOS9",
+        "AdmitWardLOS",
+        "NextWard2LOS",
+        "NextWard3LOS",
+        "NextWard4LOS",
+        "NextWard5LOS",
+        "NextWard6LOS",
+        "NextWard7LOS",
+        "NextWard8LOS",
+        "NextWard9LOS",
         "DischargeWardLOS",
     ]
 
@@ -1155,8 +1134,10 @@ class SCICols:
     ]
 
     outcome = [
+        "CriticalEvent",
+        "DiedWithin48h",
+        "DiedWithin24h",
         "Readmitted",
-        "Mortality",
         "CriticalCare",
     ]
 
@@ -1273,7 +1254,7 @@ class SCICols:
         "Group_Code",
         "Group_Desc",
         "ICD10_3_Code_Desc",
-        "MainICD10_3_Code",
+        # "MainICD10_3_Code",
     ]
 
     @staticmethod
