@@ -8,15 +8,15 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 
 class SCIData(pd.DataFrame):
-    """ Represents the SCI dataset and related methods to augment or filter it """
+    """Represents the SCI dataset and related methods to augment or filter it"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     @staticmethod
     def quickload(file, table="table"):
-        """ Loads the specified HDF5 file into Pandas directly. 
-        :param str file: The (local) file path 
+        """Loads the specified HDF5 file into Pandas directly.
+        :param str file: The (local) file path
         :param str table: The name of the table to load from the HDF5. By default, 'table' is used.
         :return: DataFrame
         """
@@ -24,10 +24,10 @@ class SCIData(pd.DataFrame):
 
     @classmethod
     def load(cls, file, table="table"):
-        """ Loads the specified HDF5 file into Pandas. 
-        :param str file: The (local) file path 
+        """Loads the specified HDF5 file into Pandas.
+        :param str file: The (local) file path
         :param str table: The name of the table to load from the HDF5. By default, 'table' is used.
-        :return: Instance of SCIData with the DataFrame loaded. 
+        :return: Instance of SCIData with the DataFrame loaded.
         """
         return cls(data=pd.read_hdf(file, table))
 
@@ -40,15 +40,15 @@ class SCIData(pd.DataFrame):
         return self
 
     def derive_all(self):
-        """ Runs all methods to derive handcrafted features from the raw dataset 
+        """Runs all methods to derive handcrafted features from the raw dataset
         :return: New SCIData instance with the new features added
         """
         return (
             self.derive_covid_strict()
-            .derive_mortality()
+            # .derive_mortality()
             .derive_readmission()
-            .derive_critical_care()
-            .derive_news_risk()
+            # .derive_critical_care()
+            # .derive_news_risk()
         )
 
     def clean_all(self):
@@ -68,8 +68,8 @@ class SCIData(pd.DataFrame):
         )
 
     def augment_ccs(self, infile="data/ccs.h5", ccs=None, sentinel=259, onehot=False):
-        """ Joins SCI and the CCS reference table fuzzily. Applies to ALL coded diagnoses, not just MainICD10
-        Codes that can't be matched exactly are matched with their 3-codes 
+        """Joins SCI and the CCS reference table fuzzily. Applies to ALL coded diagnoses, not just MainICD10
+        Codes that can't be matched exactly are matched with their 3-codes
         :param infile: The HDF5 file to load the CCS matching table from
         :param ccs: Pre-loaded CCS match table dataframe
         :param sentinel: What to fill un-matched values with. Default is the code for unclassified/residual codes
@@ -112,7 +112,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def _regroup_ccs(self, df, col, onehot=False):
-        """ Joins SCI and a given grouping table for CCS. Matches ICD-10 diagnoses with CCS if this has not already been done
+        """Joins SCI and a given grouping table for CCS. Matches ICD-10 diagnoses with CCS if this has not already been done
         :param df: The CCS grouping table (SHMI or HSMR)
         :param col: The column from the matching table to keep
         :param onehot: Whether to onehot encode the result
@@ -130,7 +130,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def augment_shmi(self, infile="data/ccs.h5", shmi=None, onehot=False):
-        """ Joins SCI and the SHMI matching table.
+        """Joins SCI and the SHMI matching table.
         :param infile: The HDF5 file to load the matching table from
         :param ccs: Pre-loaded SHMI match table dataframe
         :param onehot: Whether to onehot encode the groupings
@@ -142,7 +142,7 @@ class SCIData(pd.DataFrame):
         return self._regroup_ccs(shmi, "SHMIGroup", onehot=onehot)
 
     def augment_hsmr(self, infile="data/ccs.h5", hsmr=None, onehot=False):
-        """ Joins SCI and the HSMR matching table
+        """Joins SCI and the HSMR matching table
         :param infile: The HDF5 file to load the matching table from
         :param hsmr: Pre-loaded HSMR match table dataframe
         :returns: New SCIData instance with augmented with HSMR aggregate groups and descriptions
@@ -155,7 +155,7 @@ class SCIData(pd.DataFrame):
     def augment_icd10(
         self, infile="data/icd10.h5", icd10=None, keep=None, onehot=False, drop_old=True
     ):
-        """ Joins SCI and the ICD-10 chapter & group table.
+        """Joins SCI and the ICD-10 chapter & group table.
         :param infile: The HDF5 file to load the table from
         :param icd10: Pre-loaded ICD-10 table dataframe
         :param keep: Columns to keep from the new grouping. If None, will keep them all
@@ -191,7 +191,7 @@ class SCIData(pd.DataFrame):
         )
 
     def augment_icd10_descriptions(self, infile="data/icd10.h5", icd10=None):
-        """ Joins SCI and the ICD-10 code table.
+        """Joins SCI and the ICD-10 code table.
         :param infile: The HDF5 file to load the table from
         :param hsmr: Pre-loaded ICD-10 table dataframe
         :returns: New SCIData instance with augmented with ICD-10 full descriptions
@@ -202,10 +202,12 @@ class SCIData(pd.DataFrame):
         return SCIData(self.join(icd10, on="MainICD10"))
 
     def derive_covid(
-        self, covid_codes=["U07.1", "J12.8", "B97.2"], start_date="2020-01-01",
+        self,
+        covid_codes=["U07.1", "J12.8", "B97.2"],
+        start_date="2020-01-01",
     ):
-        """ Derives a binary feature indicating whether the patient had COVID-19, based on their coded diagnoses.
-        :param covid_codes: The ICD-10 codes to look for. 
+        """Derives a binary feature indicating whether the patient had COVID-19, based on their coded diagnoses.
+        :param covid_codes: The ICD-10 codes to look for.
         :return: New SCIData instance with the new feature added
         """
         year_mask = self.AdmissionDateTime >= start_date
@@ -216,7 +218,7 @@ class SCIData(pd.DataFrame):
         return SCIData(data=r)
 
     def derive_covid_strict(self, covid_codes=["U07.1", "J12.8", "B97.2"]):
-        """ Derives a binary feature indicating whether the patient had COVID-19 based on the entire ICD10 code combination.
+        """Derives a binary feature indicating whether the patient had COVID-19 based on the entire ICD10 code combination.
         :return: New SCIData instance with the new feature added
         """
         covid_mask = self[SCICols.diagnoses].apply(frozenset, axis=1) >= frozenset(
@@ -262,7 +264,7 @@ class SCIData(pd.DataFrame):
         return SCIData(data=r)
 
     def derive_mortality(self, within=1, col_name="DiedWithinThreshold"):
-        """ Determines the patients' mortality outcome. 
+        """Determines the patients' mortality outcome.
         :param within: Time since admission to consider a death. E.g., 1.0 means died within 24 hours, otherwise lived past 24 hours
         :return: New SCIData instance with the new feature added
         """
@@ -282,7 +284,7 @@ class SCIData(pd.DataFrame):
         within=1,
         col_name="CriticalCareWithinThreshold",
     ):
-        """ Determines admission to critical care at any point during the spell as indicated by admission to specified wards
+        """Determines admission to critical care at any point during the spell as indicated by admission to specified wards
         :param critical_wards: The wards to search for. By default, ['CCU', 'HH1M']
         :param within: Threshold of maximum LOS to consider events for. Critical care admission that occurs after this value won't be counted.
         :return: New SCIData instance with the new features added
@@ -313,7 +315,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def derive_news_risk(self):
-        """ Derives the NEWS clinical risk based on the pre-defined triggers
+        """Derives the NEWS clinical risk based on the pre-defined triggers
         :return: New SCIData instance with the new feature added
         """
         r = self.copy()
@@ -323,7 +325,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def filter_vague_diagnoses(self):
-        """ Filters out ICD10 codes marked as vague per Hassani15. Remaining diagnoses are shifted to the right.
+        """Filters out ICD10 codes marked as vague per Hassani15. Remaining diagnoses are shifted to the right.
         :return: New SCIData instance with the diagnoses filtered
         """
         ranges = [
@@ -355,8 +357,7 @@ class SCIData(pd.DataFrame):
         return SCIData(data=result)
 
     def clean_news(self):
-        """ Re-computes the NEWS score for cases where it is missing (but we have all the components) or it disagrees with the components on-record
-        """
+        """Re-computes the NEWS score for cases where it is missing (but we have all the components) or it disagrees with the components on-record"""
         brand_news = self[SCICols.news_data_scored].sum(axis=1)
 
         has_params = self[SCICols.news_data_scored].notna().all(axis=1)
@@ -705,8 +706,8 @@ class SCIData(pd.DataFrame):
         return SCIData(result)
 
     def impute_news(self):
-        """ Fill missing values in the NEWS vital signs with their medians
-            Assume no assisted breathing
+        """Fill missing values in the NEWS vital signs with their medians
+        Assume no assisted breathing
         """
         r = self.copy()
 
@@ -781,7 +782,7 @@ class SCIData(pd.DataFrame):
         return SCIData(self.drop(SCICols.news_data_raw, axis=1, errors="ignore"))
 
     def encode_onehot(self, cols, prefix, drop_old=True):
-        """ Given a set of columns, one-hot encodes them and concatenates to the DataFrame
+        """Given a set of columns, one-hot encodes them and concatenates to the DataFrame
         :param cols: The columns to encode
         :param prefix: What to call the new columns
         :param drop_old: Whether to drop the original columns after concatenating the encoded ones
@@ -796,15 +797,14 @@ class SCIData(pd.DataFrame):
             pd.get_dummies(self[cols].stack(), prefix=prefix).groupby(level=0).any()
         )
 
-        r = pd.concat([self, encoded], axis=1)
+        r = pd.concat([self, encoded.astype(int)], axis=1)
         if drop_old:
             r = r.drop(cols, axis=1)
 
         return SCIData(r)
 
     def encode_ccs_onehot(self, drop_old=True):
-        """ Given DataFrame augmented with CCS groupings (CCS, SHMI, or HSMR), one-hot encodes them
-        """
+        """Given DataFrame augmented with CCS groupings (CCS, SHMI, or HSMR), one-hot encodes them"""
 
         r = self.encode_onehot(SCICols.diagnoses, "CCS", drop_old)
         r = r.rename(
@@ -821,7 +821,10 @@ class SCIData(pd.DataFrame):
 
     def mandate(self, cols):
         return SCIData(
-            self.dropna(how="any", subset=set(cols).intersection(self.columns),)
+            self.dropna(
+                how="any",
+                subset=set(cols).intersection(self.columns),
+            )
         )
 
     def mandate_diagnoses(self):
@@ -1277,4 +1280,3 @@ class SCICols:
             + SCICols.news
             + SCICols.news_data
         )
-
