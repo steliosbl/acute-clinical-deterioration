@@ -269,20 +269,29 @@ class SCIData(pd.DataFrame):
         :return: New SCIData instance with the new feature added
         """
         r = self.copy()
-        r[col_name] = r.DiedDuringStay & (r.TotalLOS <= within)
 
         m = r[["DiedDuringStay", "DiedWithin30Days", col_name]].copy()
         m["DiedDuringStay"] = m["DiedDuringStay"] & (~m[col_name])
         m["DidNotDie"] = ~m.any(axis=1)
 
         r["Mortality"] = m.dot(m.columns)
-        return SCIData(data=r)
+        return SCIData(r)
+
+    def derive_death_within(self, within=1, col_name="DiedWithinThreshold"):
+        """Determines the patients' mortality outcome.
+        :param within: Time since admission to consider a death. E.g., 1.0 means died within 24 hours, otherwise lived past 24 hours
+        :return: New SCIData instance with the new feature added
+        """
+        r = self.copy()
+        r[col_name] = r.DiedDuringStay & (r.TotalLOS <= within)
+
+        return SCIData(r)
 
     def derive_critical_care(
         self,
         critical_wards=["CCU", "HH1M"],
         within=1,
-        col_name="CriticalCareWithinThreshold",
+        col_name="CriticalCare",
     ):
         """Determines admission to critical care at any point during the spell as indicated by admission to specified wards
         :param critical_wards: The wards to search for. By default, ['CCU', 'HH1M']
@@ -308,7 +317,7 @@ class SCIData(pd.DataFrame):
         )
         los_on_critical_admission.index = los_on_critical_admission.index.droplevel(1)
 
-        r["CriticalCare"] = m.any(axis=1)
+        # r["CriticalCare"] = m.any(axis=1)
         r[col_name] = los_on_critical_admission <= within
         r[col_name].fillna(False, inplace=True)
 
@@ -706,8 +715,8 @@ class SCIData(pd.DataFrame):
         return SCIData(result)
 
     def impute_news(self):
-        """Fill missing values in the NEWS vital signs with their medians
-        Assume no assisted breathing
+        """Fill missing values in the NEWS vital signs with their medians or appropriate static values.
+        Assume no assisted breathing. Skips any columns that aren't present.
         """
         r = self.copy()
 
@@ -716,19 +725,24 @@ class SCIData(pd.DataFrame):
         # Temperature is 36.7
         # Heart rate is 80
         for _ in SCICols.news_data_raw[:-2] + ["c_BP_Diastolic"]:
-            r[_].fillna(r[_].median(), inplace=True)
+            if _ in r.columns:
+                r[_].fillna(r[_].median(), inplace=True)
 
-        for _ in SCICols.news_data_scored:
-            r[_].fillna(0, inplace=True)
+        static_fills = {
+            **{col: 0 for col in SCICols.news_data_scored},
+            "c_Assisted_breathing": False,
+            "c_Breathing_device": "A - Air",
+            "c_Oxygen_flow_rate": 0.0,
+            "c_Pain": False,
+            "c_Alert": False,
+            "c_Nausea": False,
+            "c_Vomiting_since_last_round": False,
+            "c_Lying_down": False,
+        }
 
-        r.c_Assisted_breathing.fillna(False, inplace=True)
-        r.c_Breathing_device.fillna("A - Air", inplace=True)
-        r.c_Oxygen_flow_rate.fillna(0.0, inplace=True)
-        r.c_Pain.fillna(False, inplace=True)
-        r.c_Alert.fillna(True, inplace=True)
-        r.c_Nausea.fillna(False, inplace=True)
-        r.c_Vomiting_since_last_round.fillna(False, inplace=True)
-        r.c_Lying_down.fillna(False, inplace=True)
+        for col, val in static_fills.items():
+            if col in r.columns:
+                r[col].fillna(val, inplace=True)
 
         return SCIData(r)
 
@@ -750,6 +764,13 @@ class SCIData(pd.DataFrame):
 
     def omit_vbg(self):
         return self.omit(SCICols.vbg)
+
+    def omit_news_extras(self):
+        return self.omit(
+            set(SCICols.news_data)
+            - set(SCICols.news_data_raw)
+            - set(SCICols.news_data_scored)
+        )
 
     def omit_redundant(self):
         return self.omit(
@@ -813,9 +834,16 @@ class SCIData(pd.DataFrame):
 
         return r
 
-    def derive_critical_event(self):
+    def derive_critical_event(self, within=None, col_name="CriticalEvent"):
+        """Determines the patients' critical event outcome.
+        :param within: Time since admission to consider a critical event. E.g., 1.0 means it occurred within 24 hours, otherwise lived past 24 hours
+        :return: New SCIData instance with the new feature added
+        """
+        temp = self.derive_death_within(within=within).derive_critical_care(within=within)
+        col = temp.DiedWithinThreshold | temp.CriticalCare
+
         r = self.copy()
-        r["CriticalEvent"] = r.DiedDuringStay | r.CriticalCare
+        r[col_name] = col
 
         return SCIData(r)
 
@@ -832,6 +860,9 @@ class SCIData(pd.DataFrame):
 
     def mandate_news(self):
         return self.mandate(SCICols.news_data)
+
+    def mandate_blood(self):
+        return self.mandate(SCICols.blood)
 
     def preprocess_from_params(self, **kwargs):
         r = self
