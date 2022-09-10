@@ -773,8 +773,12 @@ class SCIData(pd.DataFrame):
             + SCICols.hrg
             + SCICols.gp
             + SCICols.news
-            + ["Area", "AandEArrivalTime", "AandEDepartureTime", "c_NEWS_risk"]
             + [
+                "Area",
+                "AandEArrivalTime",
+                "AandEDepartureTime",
+                "c_NEWS_risk",
+                "AssessmentAreaDischarge",
                 "Covid",
                 "ReadmissionTimespan",
                 "ReadmittedTimespan",
@@ -874,7 +878,7 @@ class SCIData(pd.DataFrame):
         r = r.mandate_diagnoses()
         return r.xy()
 
-    def xy(self, x=[], dtype=None, outcome="DiedDuringStay"):
+    def xy(self, x=[], dtype=None, dropna=False, outcome="DiedDuringStay"):
         X = (
             self[x]
             if len(x)
@@ -885,7 +889,10 @@ class SCIData(pd.DataFrame):
         if dtype is not None:
             X = X.astype(dtype)
         y = self[outcome].copy()
-        return X, y
+        if dropna:
+            X = X.dropna(how='any')
+            y = y[X.index]
+        return SCIData(X), y
 
 
 def justify(df, invalid_val=np.nan, axis=1, side="left"):
