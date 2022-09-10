@@ -202,9 +202,7 @@ class SCIData(pd.DataFrame):
         return SCIData(self.join(icd10, on="MainICD10"))
 
     def derive_covid(
-        self,
-        covid_codes=["U07.1", "J12.8", "B97.2"],
-        start_date="2020-01-01",
+        self, covid_codes=["U07.1", "J12.8", "B97.2"], start_date="2020-01-01",
     ):
         """Derives a binary feature indicating whether the patient had COVID-19, based on their coded diagnoses.
         :param covid_codes: The ICD-10 codes to look for.
@@ -288,10 +286,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def derive_critical_care(
-        self,
-        critical_wards=["CCU", "HH1M"],
-        within=1,
-        col_name="CriticalCare",
+        self, critical_wards=["CCU", "HH1M"], within=1, col_name="CriticalCare",
     ):
         """Determines admission to critical care at any point during the spell as indicated by admission to specified wards
         :param critical_wards: The wards to search for. By default, ['CCU', 'HH1M']
@@ -766,11 +761,7 @@ class SCIData(pd.DataFrame):
         return self.omit(SCICols.vbg)
 
     def omit_news_extras(self):
-        return self.omit(
-            set(SCICols.news_data)
-            - set(SCICols.news_data_raw)
-            - set(SCICols.news_data_scored)
-        )
+        return self.omit(SCICols.news_data_extras)
 
     def omit_redundant(self):
         return self.omit(
@@ -829,17 +820,19 @@ class SCIData(pd.DataFrame):
 
         r = self.encode_onehot(SCICols.diagnoses, "CCS", drop_old)
         r = r.rename(
-            columns={_: str(_)[:-2] for _ in r.columns if str(_).startswith("CCS_")}
+            columns={_: str(_) for _ in r.columns if str(_).startswith("CCS_")}
         )
 
-        return r
+        return SCIData(r)
 
     def derive_critical_event(self, within=None, col_name="CriticalEvent"):
         """Determines the patients' critical event outcome.
         :param within: Time since admission to consider a critical event. E.g., 1.0 means it occurred within 24 hours, otherwise lived past 24 hours
         :return: New SCIData instance with the new feature added
         """
-        temp = self.derive_death_within(within=within).derive_critical_care(within=within)
+        temp = self.derive_death_within(within=within).derive_critical_care(
+            within=within
+        )
         col = temp.DiedWithinThreshold | temp.CriticalCare
 
         r = self.copy()
@@ -849,10 +842,7 @@ class SCIData(pd.DataFrame):
 
     def mandate(self, cols):
         return SCIData(
-            self.dropna(
-                how="any",
-                subset=set(cols).intersection(self.columns),
-            )
+            self.dropna(how="any", subset=set(cols).intersection(self.columns),)
         )
 
     def mandate_diagnoses(self):
@@ -884,12 +874,18 @@ class SCIData(pd.DataFrame):
         r = r.mandate_diagnoses()
         return r.xy()
 
-    def xy(self, outcome="DiedDuringStay"):
-        X, y = (
-            self.drop(SCICols.outcome + [outcome], axis=1, errors="ignore"),
-            self[outcome].copy().to_numpy(),
+    def xy(self, x=[], dtype=None, outcome="DiedDuringStay"):
+        X = (
+            self[x]
+            if len(x)
+            else self.drop(
+                SCICols.outcome + SCICols.mortality + [outcome], axis=1, errors="ignore"
+            )
         )
-        return SCIData(X), y
+        if dtype is not None:
+            X = X.astype(dtype)
+        y = self[outcome].copy()
+        return X, y
 
 
 def justify(df, invalid_val=np.nan, axis=1, side="left"):
@@ -1220,9 +1216,9 @@ class SCICols:
 
     blood = [
         "Haemoglobin",
-        "Urea(serum)",
-        "Sodium(serum)",
-        "Potassium(serum)",
+        "Urea_serum",
+        "Sodium_serum",
+        "Potassium_serum",
         "Creatinine",
     ]
 
@@ -1280,6 +1276,16 @@ class SCICols:
         "c_NEWS_BP_score",
         "c_NEWS_heart_rate_score",
         "c_NEWS_level_of_con_score",
+    ]
+
+    news_data_extras = [
+        "c_Vomiting_since_last_round",
+        "c_BP_Diastolic",
+        "c_Lying_down",
+        "c_Pain",
+        "c_Oxygen_flow_rate",
+        "c_Nausea",
+        "c_Breathing_device",
     ]
 
     icd10_grouping = [

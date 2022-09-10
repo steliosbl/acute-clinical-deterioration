@@ -4,7 +4,7 @@ from functools import partial
 from sklearn.model_selection import cross_validate
 
 
-def cross_validate_parallel(models, X, y, cv=3, threads=None):
+def cross_validate_parallel(models, X, y, scoring, cv=3, threads=None):
     if not threads:
         threads = len(models)
 
@@ -12,7 +12,7 @@ def cross_validate_parallel(models, X, y, cv=3, threads=None):
         keys, values = zip(*models.items())
         result = zip(
             keys,
-            p.map(partial(cross_validate, X=X, y=y, cv=cv, scoring=METRICS), values),
+            p.map(partial(cross_validate, X=X, y=y, cv=cv, scoring=scoring), values),
         )
 
     return dict(result)
