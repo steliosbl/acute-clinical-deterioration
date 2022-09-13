@@ -861,7 +861,7 @@ class SCIData(pd.DataFrame):
         )
 
     def mandate_diagnoses(self):
-        return self.mandate(SCICols.diagnoses_ccs_encoded + SCICols.diagnoses)
+        return self.mandate([_ for _ in self.columns if _.startswith('CCS_')] + SCICols.diagnoses)
 
     def mandate_news(self):
         return self.mandate(SCICols.news_data)
@@ -905,15 +905,13 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def describe_categories(self):
-        categorical_cols = [col for col, type in get_column_types().items() if type=='c']
+        categorical_cols = [_ for _ in self.columns if self.get_column_types()[_] == 'c']
 
         categorical_cols_idx = [
             self.columns.get_loc(_)
             for _ in categorical_cols
         ]
-        categorical_dims = list(
-            self[categorical_cols].apply(lambda x: x.cat.categories.shape[0]).values
-        )
+        categorical_dims = [self[_].unique().shape[0] for _ in categorical_cols]
 
         return categorical_cols_idx, categorical_dims
 
