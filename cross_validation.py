@@ -4,6 +4,15 @@ from functools import partial
 from sklearn.model_selection import cross_validate
 
 
+def cross_validate_linear(models, X, y, scoring, cv=3):
+    keys, values = zip(*models.items())
+    return dict(
+        zip(
+            keys, map(partial(cross_validate, X=X, y=y, cv=cv, scoring=scoring, n_jobs=-1), values)
+        )
+    )
+
+
 def cross_validate_parallel(models, X, y, scoring, cv=3, threads=None):
     if not threads:
         threads = len(models)
@@ -19,10 +28,10 @@ def cross_validate_parallel(models, X, y, scoring, cv=3, threads=None):
 
 
 def _run_cv(kv, X, y, scoring, cv):
-    print(f'STARTING {kv[0]}', flush = True)
+    print(f"STARTING {kv[0]}", flush=True)
     try:
         r = cross_validate(kv[1], X=X, y=y, cv=cv, scoring=scoring)
-        print(f'FINISHED {kv[0]}', flush = True)
+        print(f"FINISHED {kv[0]}", flush=True)
         return [
             {"model": kv[0], "err": False, **{k: v[i] for k, v in r.items()}}
             for i in range(cv)

@@ -36,8 +36,12 @@ class SCIData(pd.DataFrame):
         return cls(pd.concat([X, pd.Series(y, name="y")], axis=1))
 
     def save(self, filename="data/sci_processed.h5"):
-        self.to_hdf(filename, "table")
-        return self
+        r = self.copy()
+        mask = r.select_dtypes(include="category")
+        r[mask.columns] = mask.astype(str)
+
+        r.to_hdf(filename, "table")
+        return SCIData(r)
 
     def derive_all(self):
         """Runs all methods to derive handcrafted features from the raw dataset
@@ -238,19 +242,17 @@ class SCIData(pd.DataFrame):
         :param labels: String labels for the returned bands
         :return: New SCIData instance with the new features added
         """
-        bins = [pd.Timedelta(days=_) for _ in bins]
+        bins = [pd.Timedelta(days=_) for _ in [-1] + bins]
+        labels = labels + ["N/A"]
 
         r = self.copy()
         grouped = r.sort_values(["PatientNumber", "AdmissionDateTime"]).groupby(
             "PatientNumber"
         )
         r["ReadmissionTimespan"] = grouped.AdmissionDateTime.diff().dropna()
-        r["ReadmissionBand"] = (
-            pd.cut(r.ReadmissionTimespan, bins, labels=labels)
-            .astype(str)
-            .replace("nan", np.nan)
-            .fillna("N/A")
-        )
+        r["ReadmissionBand"] = pd.cut(
+            r.ReadmissionTimespan, bins, labels=labels, ordered=False
+        ).fillna("N/A")
         r["Readmission"] = r.ReadmissionTimespan < pd.Timedelta(days=readmission_thresh)
 
         timespan_reverse = grouped.AdmissionDateTime.diff(-1).dropna()
@@ -260,6 +262,17 @@ class SCIData(pd.DataFrame):
         r["ReadmittedTimespan"] = timespan_reverse * (-1)
 
         return SCIData(data=r)
+
+    def fix_readmissionband(
+        self,
+        labels=["24 Hrs", "48 Hrs", "1 Week", "2 Weeks", "1 Month", "2 Months", "N/A"],
+    ):
+        r = self.copy()
+        r.ReadmissionBand = r.ReadmissionBand.astype(
+            pd.CategoricalDtype(labels, ordered=False)
+        )
+
+        return SCIData(r)
 
     def derive_mortality(self, within=1, col_name="DiedWithinThreshold"):
         """Determines the patients' mortality outcome.
@@ -749,7 +762,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def omit(self, cols):
-        return SCIData(self.drop(cols, errors="ignore", axis=1))
+        return self.drop(cols, errors="ignore", axis=1)
 
     def omit_news(self):
         return self.omit(SCICols.news_data)
@@ -787,9 +800,7 @@ class SCIData(pd.DataFrame):
         )
 
     def omit_ae(self):
-        return self.omit(
-            ["AandEMainDiagnosis", "AandEPatientGroupDescription", "AandELocation"]
-        )
+        return self.omit(SCICols.ae)
 
     def raw_news(self):
         return SCIData(self.drop(SCICols.news_data_scored, axis=1, errors="ignore"))
@@ -878,7 +889,42 @@ class SCIData(pd.DataFrame):
         r = r.mandate_diagnoses()
         return r.xy()
 
-    def xy(self, x=[], dtype=None, dropna=False, outcome="DiedDuringStay"):
+    def categorize(self):
+        r = self.copy()
+
+        mask = r.select_dtypes(include=object)
+        r[mask.columns] = r.select_dtypes(include=object).astype("category")
+
+        return SCIData(r)
+
+    def ordinal_encode_categories(self):
+        r = self.copy()
+        mask = r.select_dtypes(include="category")
+        r[mask.columns] = mask.apply(lambda x: x.cat.codes)
+
+        return SCIData(r)
+
+    def describe_categories(self):
+        categorical_cols_idx = [
+            self.columns.get_loc(_)
+            for _ in self.select_dtypes(include="category").columns
+        ]
+        categorical_dims = list(
+            self.select_dtypes(include="category")
+            .apply(lambda x: x.cat.categories.shape[0])
+            .values
+        )
+
+        return categorical_cols_idx, categorical_dims
+
+    def xy(
+        self,
+        x=[],
+        dtype=None,
+        dropna=False,
+        ordinal_encoding=False,
+        outcome="DiedDuringStay",
+    ):
         X = (
             self[x]
             if len(x)
@@ -890,9 +936,20 @@ class SCIData(pd.DataFrame):
             X = X.astype(dtype)
         y = self[outcome].copy()
         if dropna:
-            X = X.dropna(how='any')
+            X = X.dropna(how="any")
             y = y[X.index]
+
+        X = X.apply(lambda x: x.replace({True: 1.0, False: 0.0}))
+
+        X = SCIData(X).categorize()
+
+        if ordinal_encoding:
+            X = SCIData(X).ordinal_encode_categories()
+
         return SCIData(X), y
+
+    def drop(self, cols, **kwargs):
+        return SCIData(super(SCIData, self).drop(cols, **kwargs))
 
 
 def justify(df, invalid_val=np.nan, axis=1, side="left"):
