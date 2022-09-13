@@ -905,23 +905,31 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def describe_categories(self):
+        categorical_cols = [col for col, type in get_column_types().items() if type=='c']
+
         categorical_cols_idx = [
             self.columns.get_loc(_)
-            for _ in self.select_dtypes(include="category").columns
+            for _ in categorical_cols
         ]
         categorical_dims = list(
-            self.select_dtypes(include="category")
-            .apply(lambda x: x.cat.categories.shape[0])
-            .values
+            self[categorical_cols].apply(lambda x: x.cat.categories.shape[0]).values
         )
 
         return categorical_cols_idx, categorical_dims
+
+    def get_column_types(self):
+        return {
+            **{_:'q' for _ in self.columns},
+            **{_:'i' for _ in self.columns if _.startswith('CCS_')},
+            **SCICols.xgb_types
+        }
 
     def xy(
         self,
         x=[],
         dtype=None,
         dropna=False,
+        fillna=False,
         ordinal_encoding=False,
         outcome="DiedDuringStay",
     ):
@@ -941,6 +949,10 @@ class SCIData(pd.DataFrame):
 
         X = X.apply(lambda x: x.replace({True: 1.0, False: 0.0}))
 
+        if fillna:
+            X.select_dtypes(include='number').fillna(-1, inplace=True)
+            X.select_dtypes(include='object').fillna('NAN', inplace=True)
+        
         X = SCIData(X).categorize()
 
         if ordinal_encoding:
@@ -1381,3 +1393,44 @@ class SCICols:
             + SCICols.news
             + SCICols.news_data
         )
+
+    xgb_types = {
+        'Female': 'i',
+        'Age': 'int',
+        'ElectiveAdmission': 'i',
+        'AdmissionMethodDescription': 'c',
+        'AdmissionSpecialty': 'c',
+        'AgeBand': 'c',
+        'AssessmentAreaAdmission': 'i',
+        'LastSpecialty': 'c',
+        'MainICD10': 'c',
+        'SecDiag1': 'c',
+        'SecDiag2': 'c',
+        'SecDiag3': 'c',
+        'SecDiag4': 'c',
+        'SecDiag5': 'c',
+        'SecDiag6': 'c',
+        'Haemoglobin': 'q',
+        'Urea_serum': 'q',
+        'Sodium_serum': 'q',
+        'Potassium_serum': 'q',
+        'Creatinine': 'q',
+        'c_Respiration_rate': 'q',
+        'c_Assisted_breathing': 'i',
+        'c_Breathing_device': 'c',
+        'c_O2_saturation': 'q',
+        'c_Oxygen_flow_rate': 'q',
+        'c_Temperature': 'q',
+        'c_Lying_down': 'i',
+        'c_BP_Systolic': 'q',
+        'c_BP_Diastolic': 'q',
+        'c_Heart_rate': 'q',
+        'c_Alert': 'q',
+        'c_Pain': 'i',
+        'c_Nausea': 'i',
+        'c_Vomiting_since_last_round': 'i',
+        'Readmission': 'i',
+        'DiedDuringStay': 'i',
+        'DiedWithin30Days': 'i',
+        'CriticalEvent': 'i'
+ }
