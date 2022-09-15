@@ -39,7 +39,7 @@ ISOLATION_METRICS = {
 }
 
 
-def evaluate_from_pred(y_true, y_pred, y_pred_proba, plot_title=None, pos_label=1):
+def evaluate_from_pred(y_true, y_pred, y_pred_proba, plot_title=None, pos_label=1, save=None):
     display(
         pd.DataFrame(
             {
@@ -71,8 +71,11 @@ def evaluate_from_pred(y_true, y_pred, y_pred_proba, plot_title=None, pos_label=
 
     plt.suptitle(plot_title)
 
+    if save:
+        plt.savefig(save, bbox_inches="tight")
 
-def evaluate(model, X, y, plot_title=None):
+
+def evaluate(model, X, y, plot_title=None, save=None):
     y_pred = model.predict(X)
     try:
         y_pred_proba = model.predict_proba(X)[:, 1]
@@ -82,4 +85,4 @@ def evaluate(model, X, y, plot_title=None):
         except AttributeError:
             y_pred_proba = model.score_samples(X)
 
-    evaluate_from_pred(y, y_pred, y_pred_proba, plot_title)
+    evaluate_from_pred(y, y_pred, y_pred_proba, plot_title=plot_title, save=save)
