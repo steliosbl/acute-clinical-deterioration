@@ -67,7 +67,7 @@ def evaluate_from_pred(y_true, y_pred, y_pred_proba, plot_title=None, pos_label=
     if (-1) in np.array(y_true):
         get = {1: True, -1: False}.get
         y_true, y_pred = (list(map(get, y_true)), list(map(get, y_pred)))
-    ConfusionMatrixDisplay.from_predictions(y_true, y_pred, ax=ax[2])
+    ConfusionMatrixDisplay.from_predictions(y_true, y_pred, ax=ax[2], normalize='true', values_format='.2%')
 
     plt.suptitle(plot_title)
 
