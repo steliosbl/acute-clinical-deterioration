@@ -1,4 +1,6 @@
 import pandas as pd
+import numpy as np
+
 from IPython.display import display
 import matplotlib.pyplot as plt
 
@@ -62,7 +64,7 @@ def evaluate_from_pred(y_true, y_pred, y_pred_proba, plot_title=None, pos_label=
         y_true, y_pred_proba, ax=ax[1], pos_label=pos_label
     )
 
-    if (-1) in y_true.values:
+    if (-1) in np.array(y_true):
         get = {1: True, -1: False}.get
         y_true, y_pred = (list(map(get, y_true)), list(map(get, y_pred)))
     ConfusionMatrixDisplay.from_predictions(y_true, y_pred, ax=ax[2])
@@ -76,8 +78,8 @@ def evaluate(model, X, y, plot_title=None):
         y_pred_proba = model.predict_proba(X)[:, 1]
     except AttributeError:
         try:
-            y_pred_proba = model.score_samples(X)
-        except AttributeError:
             y_pred_proba = model.decision_function(X)
+        except AttributeError:
+            y_pred_proba = model.score_samples(X)
 
     evaluate_from_pred(y, y_pred, y_pred_proba, plot_title)
