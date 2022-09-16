@@ -113,7 +113,7 @@ class SCIData(pd.DataFrame):
         if onehot:
             r = r.encode_ccs_onehot()
 
-        return r
+        return SCIData(r)
 
     def _regroup_ccs(self, df, col, onehot=False):
         """Joins SCI and a given grouping table for CCS. Matches ICD-10 diagnoses with CCS if this has not already been done
@@ -131,7 +131,7 @@ class SCIData(pd.DataFrame):
         if onehot:
             r = r.encode_ccs_onehot()
 
-        return r
+        return SCIData(r)
 
     def augment_shmi(self, infile="data/ccs.h5", shmi=None, onehot=False):
         """Joins SCI and the SHMI matching table.
@@ -961,7 +961,7 @@ class SCIData(pd.DataFrame):
         if ordinal_encoding:
             X = SCIData(X).ordinal_encode_categories()
 
-        return X.copy(), y
+        return SCIData(X), y
 
     def drop(self, cols, **kwargs):
         return SCIData(super(SCIData, self).drop(cols, **kwargs))

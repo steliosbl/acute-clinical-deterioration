@@ -26,8 +26,19 @@ from imblearn.pipeline import Pipeline as ImbPipeline
 from imblearn.under_sampling import RandomUnderSampler, TomekLinks
 from imblearn.over_sampling import SMOTE, SMOTENC
 
+from pytorch_tabnet.metrics import Metric as TabNetMetric
+
 
 f2_score = make_scorer(fbeta_score, beta=2)
+
+class F2TabNet(TabNetMetric):
+    def __init__(self):
+        self._name = "F2"
+        self._maximize = True
+
+    def __call__(self, y_true, y_score):
+        y_pred = np.argmax(y_score, axis=1)
+        return fbeta_score(y_true, y_pred, beta=2)
 
 METRICS = {
     "Accuracy": "accuracy",
