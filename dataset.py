@@ -830,12 +830,12 @@ class SCIData(pd.DataFrame):
 
         return SCIData(r)
 
-    def encode_ccs_onehot(self, drop_old=True):
+    def encode_ccs_onehot(self, drop_old=True, prefix="HSMR"):
         """Given DataFrame augmented with CCS groupings (CCS, SHMI, or HSMR), one-hot encodes them"""
 
-        r = self.encode_onehot(SCICols.diagnoses, "CCS", drop_old)
+        r = self.encode_onehot(SCICols.diagnoses, prefix, drop_old)
         r = r.rename(
-            columns={_: str(_) for _ in r.columns if str(_).startswith("CCS_")}
+            columns={_: str(_[:-2]) for _ in r.columns if str(_).startswith(prefix)}
         )
 
         return SCIData(r)
@@ -860,8 +860,10 @@ class SCIData(pd.DataFrame):
             self.dropna(how="any", subset=set(cols).intersection(self.columns),)
         )
 
-    def mandate_diagnoses(self):
-        return self.mandate([_ for _ in self.columns if _.startswith('CCS_')] + SCICols.diagnoses)
+    def mandate_diagnoses(self, prefix="HSMR"):
+        return self.mandate(
+            [_ for _ in self.columns if _.startswith(prefix)] + SCICols.diagnoses
+        )
 
     def mandate_news(self):
         return self.mandate(SCICols.news_data)
@@ -905,21 +907,24 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def describe_categories(self):
-        categorical_cols = [_ for _ in self.columns if self.get_column_types()[_] == 'c']
-
-        categorical_cols_idx = [
-            self.columns.get_loc(_)
-            for _ in categorical_cols
+        categorical_cols = [
+            _ for _ in self.columns if self.get_column_types()[_] == "c"
         ]
+
+        categorical_cols_idx = [self.columns.get_loc(_) for _ in categorical_cols]
         categorical_dims = [self[_].unique().shape[0] for _ in categorical_cols]
 
         return categorical_cols_idx, categorical_dims
 
     def get_column_types(self):
         return {
-            **{_:'q' for _ in self.columns},
-            **{_:'i' for _ in self.columns if _.startswith('CCS_')},
-            **SCICols.xgb_types
+            **{_: "q" for _ in self.columns},
+            **{
+                _: "i"
+                for _ in self.columns
+                if (_.startswith("CCS_") or _.startswith("HSMR_"))
+            },
+            **SCICols.xgb_types,
         }
 
     def xy(
@@ -934,7 +939,7 @@ class SCIData(pd.DataFrame):
         X = (
             self[x]
             if len(x)
-            else self.drop(
+            else super(SCIData, self).drop(
                 SCICols.outcome + SCICols.mortality + [outcome], axis=1, errors="ignore"
             )
         )
@@ -948,15 +953,15 @@ class SCIData(pd.DataFrame):
         X = X.apply(lambda x: x.replace({True: 1.0, False: 0.0}))
 
         if fillna:
-            X.select_dtypes(include='number').fillna(-1, inplace=True)
-            X.select_dtypes(include='object').fillna('NAN', inplace=True)
-        
+            X.select_dtypes(include="number").fillna(-1, inplace=True)
+            X.select_dtypes(include="object").fillna("NAN", inplace=True)
+
         X = SCIData(X).categorize()
 
         if ordinal_encoding:
             X = SCIData(X).ordinal_encode_categories()
 
-        return SCIData(X), y
+        return X.copy(), y
 
     def drop(self, cols, **kwargs):
         return SCIData(super(SCIData, self).drop(cols, **kwargs))
@@ -1393,42 +1398,43 @@ class SCICols:
         )
 
     xgb_types = {
-        'Female': 'i',
-        'Age': 'int',
-        'ElectiveAdmission': 'i',
-        'AdmissionMethodDescription': 'c',
-        'AdmissionSpecialty': 'c',
-        'AgeBand': 'c',
-        'AssessmentAreaAdmission': 'i',
-        'LastSpecialty': 'c',
-        'MainICD10': 'c',
-        'SecDiag1': 'c',
-        'SecDiag2': 'c',
-        'SecDiag3': 'c',
-        'SecDiag4': 'c',
-        'SecDiag5': 'c',
-        'SecDiag6': 'c',
-        'Haemoglobin': 'q',
-        'Urea_serum': 'q',
-        'Sodium_serum': 'q',
-        'Potassium_serum': 'q',
-        'Creatinine': 'q',
-        'c_Respiration_rate': 'q',
-        'c_Assisted_breathing': 'i',
-        'c_Breathing_device': 'c',
-        'c_O2_saturation': 'q',
-        'c_Oxygen_flow_rate': 'q',
-        'c_Temperature': 'q',
-        'c_Lying_down': 'i',
-        'c_BP_Systolic': 'q',
-        'c_BP_Diastolic': 'q',
-        'c_Heart_rate': 'q',
-        'c_Alert': 'q',
-        'c_Pain': 'i',
-        'c_Nausea': 'i',
-        'c_Vomiting_since_last_round': 'i',
-        'Readmission': 'i',
-        'DiedDuringStay': 'i',
-        'DiedWithin30Days': 'i',
-        'CriticalEvent': 'i'
- }
+        "Female": "i",
+        "Age": "int",
+        "ElectiveAdmission": "i",
+        "AdmissionMethodDescription": "c",
+        "AdmissionSpecialty": "c",
+        "AgeBand": "c",
+        "AssessmentAreaAdmission": "i",
+        "LastSpecialty": "c",
+        "MainICD10": "c",
+        "SecDiag1": "c",
+        "SecDiag2": "c",
+        "SecDiag3": "c",
+        "SecDiag4": "c",
+        "SecDiag5": "c",
+        "SecDiag6": "c",
+        "Haemoglobin": "q",
+        "Urea_serum": "q",
+        "Sodium_serum": "q",
+        "Potassium_serum": "q",
+        "Creatinine": "q",
+        "c_Respiration_rate": "q",
+        "c_Assisted_breathing": "i",
+        "c_Breathing_device": "c",
+        "c_O2_saturation": "q",
+        "c_Oxygen_flow_rate": "q",
+        "c_Temperature": "q",
+        "c_Lying_down": "i",
+        "c_BP_Systolic": "q",
+        "c_BP_Diastolic": "q",
+        "c_Heart_rate": "q",
+        "c_Alert": "q",
+        "c_Pain": "i",
+        "c_Nausea": "i",
+        "c_Vomiting_since_last_round": "i",
+        "Readmission": "i",
+        "DiedDuringStay": "i",
+        "DiedWithin30Days": "i",
+        "CriticalEvent": "i",
+    }
+
