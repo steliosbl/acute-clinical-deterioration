@@ -20,7 +20,7 @@ from sklearn.metrics import (
     RocCurveDisplay,
     PrecisionRecallDisplay,
 )
-
+from sklearn.dummy import DummyClassifier
 
 from imblearn.pipeline import Pipeline as ImbPipeline
 from imblearn.under_sampling import RandomUnderSampler, TomekLinks
@@ -31,6 +31,7 @@ from pytorch_tabnet.metrics import Metric as TabNetMetric
 
 f2_score = make_scorer(fbeta_score, beta=2)
 
+
 class F2TabNet(TabNetMetric):
     def __init__(self):
         self._name = "F2"
@@ -39,6 +40,7 @@ class F2TabNet(TabNetMetric):
     def __call__(self, y_true, y_score):
         y_pred = np.argmax(y_score, axis=1)
         return fbeta_score(y_true, y_pred, beta=2)
+
 
 METRICS = {
     "Accuracy": "accuracy",
@@ -203,34 +205,34 @@ def with_sampling_strategies(clf, clf_name="Classifier", categorical_cols_idx=[]
 def evaluate_from_pred(
     y_true, y_pred, y_pred_proba, plot_title=None, pos_label=1, save=None
 ):
-    display(
-        pd.DataFrame(
-            {
-                "Accuracy": accuracy_score(y_true, y_pred),
-                "Precision": precision_score(y_true, y_pred, pos_label=pos_label),
-                "Recall": recall_score(y_true, y_pred, pos_label=pos_label),
-                "AUC": roc_auc_score(y_true, y_pred_proba),
-                "F1 Score": f1_score(y_true, y_pred, pos_label=pos_label),
-                "F2 Score": fbeta_score(y_true, y_pred, beta=2, pos_label=pos_label),
-            },
-            index=["Model"],
-        )
+    metric_df = pd.DataFrame(
+        {
+            "Accuracy": accuracy_score(y_true, y_pred),
+            "Precision": precision_score(y_true, y_pred, pos_label=pos_label),
+            "Recall": recall_score(y_true, y_pred, pos_label=pos_label),
+            "AUC": roc_auc_score(y_true, y_pred_proba),
+            "F1 Score": f1_score(y_true, y_pred, pos_label=pos_label),
+            "F2 Score": fbeta_score(y_true, y_pred, beta=2, pos_label=pos_label),
+        },
+        index=["Model"],
     )
+
+    display(metric_df)
 
     fig, ax = plt.subplots(1, 3, figsize=(16, 5))
 
     ax[2].grid(False)
-    RocCurveDisplay.from_predictions(
+    roc_fig = RocCurveDisplay.from_predictions(
         y_true, y_pred_proba, ax=ax[0],  # pos_label=pos_label
     )
-    PrecisionRecallDisplay.from_predictions(
+    pr_fig = PrecisionRecallDisplay.from_predictions(
         y_true, y_pred_proba, ax=ax[1], pos_label=pos_label
     )
 
     if (-1) in np.array(y_true):
         get = {1: True, -1: False}.get
         y_true, y_pred = (list(map(get, y_true)), list(map(get, y_pred)))
-    ConfusionMatrixDisplay.from_predictions(
+    cm_fig = ConfusionMatrixDisplay.from_predictions(
         y_true, y_pred, ax=ax[2], normalize="true", values_format=".2%"
     )
 
@@ -238,6 +240,8 @@ def evaluate_from_pred(
 
     if save:
         plt.savefig(save, bbox_inches="tight")
+
+    return metric_df, roc_fig, pr_fig, cm_fig
 
 
 def evaluate(model, X, y, plot_title=None, save=None):
@@ -250,4 +254,16 @@ def evaluate(model, X, y, plot_title=None, save=None):
         except AttributeError:
             y_pred_proba = model.score_samples(X)
 
-    evaluate_from_pred(y, y_pred, y_pred_proba, plot_title=plot_title, save=save)
+    return evaluate_from_pred(y, y_pred, y_pred_proba, plot_title=plot_title, save=save)
+
+
+def ideal_pr_curve(y, **kwargs):
+    return PrecisionRecallDisplay.from_predictions(y, y, **kwargs)
+
+
+def naive_pr_curve(y, **kwargs):
+    return PrecisionRecallDisplay.from_predictions(y, np.zeros_like(y), **kwargs)
+
+
+def naive_roc_curve(y, **kwargs):
+    return RocCurveDisplay.from_predictions(y, np.zeros_like(y), **kwargs)
