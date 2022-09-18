@@ -4,6 +4,8 @@ import numpy as np
 
 from IPython.display import display
 import matplotlib.pyplot as plt
+import seaborn as sns
+
 
 from sklearn.base import clone as clone_estimator
 from sklearn.model_selection import train_test_split, cross_validate
@@ -203,7 +205,13 @@ def with_sampling_strategies(clf, clf_name="Classifier", categorical_cols_idx=[]
 
 
 def evaluate_from_pred(
-    y_true, y_pred, y_pred_proba, plot_title=None, pos_label=1, save=None
+    y_true,
+    y_pred,
+    y_pred_proba,
+    plot_title=None,
+    pos_label=1,
+    save=None,
+    style="darkgrid",
 ):
     metric_df = pd.DataFrame(
         {
@@ -219,6 +227,7 @@ def evaluate_from_pred(
 
     display(metric_df)
 
+    sns.set_style(style)
     fig, ax = plt.subplots(1, 3, figsize=(16, 5))
 
     ax[2].grid(False)
@@ -244,7 +253,7 @@ def evaluate_from_pred(
     return metric_df, roc_fig, pr_fig, cm_fig
 
 
-def evaluate(model, X, y, plot_title=None, save=None):
+def evaluate(model, X, y, plot_title=None, save=None, style="darkgrid"):
     y_pred = model.predict(X)
     try:
         y_pred_proba = model.predict_proba(X)[:, 1]
@@ -254,7 +263,9 @@ def evaluate(model, X, y, plot_title=None, save=None):
         except AttributeError:
             y_pred_proba = model.score_samples(X)
 
-    return evaluate_from_pred(y, y_pred, y_pred_proba, plot_title=plot_title, save=save)
+    return evaluate_from_pred(
+        y, y_pred, y_pred_proba, plot_title=plot_title, save=save, style=style
+    )
 
 
 def ideal_pr_curve(y, **kwargs):

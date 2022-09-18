@@ -145,3 +145,4 @@ sample_cut/*
 images/*
 .vscode/settings.json
 models/*
+results/*
