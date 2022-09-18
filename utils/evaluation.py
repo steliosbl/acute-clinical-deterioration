@@ -54,6 +54,46 @@ METRICS = {
 }
 
 
+def joint_plot(
+    subplots,
+    filename=None,
+    ax=None,
+    title=None,
+    style="white",
+    legend_location="lower right",
+    baseline_key="Baseline (NEWS)",
+    plot_baseline=True,
+):
+    sns.set_style(style)
+    plt.rc("axes", titlesize=16)
+
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+
+    for key, plot in subplots.items():
+        if key != baseline_key:
+            plot.plot(ax=ax, name=key)
+
+    ax.set_title(title)
+    ax.legend(loc=legend_location)
+
+    if filename:
+        plt.savefig(
+            f"{Notebook.IMAGE_DIR}/{filename}_no_baseline.png", bbox_inches="tight"
+        )
+
+    if baseline_key in subplots.keys() and plot_baseline:
+        subplots[baseline_key].plot(
+            ax=ax, linestyle="--", color="dimgray", name=baseline_key
+        )
+    ax.legend(loc=legend_location)
+
+    if filename:
+        plt.savefig(f"{Notebook.IMAGE_DIR}/{filename}.png", bbox_inches="tight")
+
+    plt.rc("axes", titlesize=12)  # Revert to default
+
+
 def spotCheckDatasets(
     models,
     datasets,

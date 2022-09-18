@@ -966,6 +966,12 @@ class SCIData(pd.DataFrame):
     def drop(self, cols, **kwargs):
         return SCIData(super(SCIData, self).drop(cols, **kwargs))
 
+    def derive_long_los(self, over=1, col='LongLOS'):
+        r = self.copy()
+        r[col] = r.TotalLOS >= over
+
+        return SCIData(r)
+
 
 def justify(df, invalid_val=np.nan, axis=1, side="left"):
     """
