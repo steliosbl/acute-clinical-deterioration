@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -c 8
+#SBATCH -p cpu
+#SBATCH -t 01-00:00:00
+#SBATCH --mem=32g
+#SBATCH --qos=short
+#SBATCH --job-name=acp_d30
+
+eval "$('/home2/kqcr86/anaconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+conda activate py39nbc
+jupyter nbconvert --ExecutePreprocessor.allow_errors=True --ExecutePreprocessor.timeout=-1 --to notebook --execute outcome_los_7.ipynb 
+    
