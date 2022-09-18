@@ -1,6 +1,8 @@
 from collections import defaultdict
 import pandas as pd
 import numpy as np
+from scipy import stats as st
+import math
 
 from IPython.display import display
 import matplotlib.pyplot as plt
@@ -48,10 +50,33 @@ METRICS = {
     "Accuracy": "accuracy",
     "Precision": "precision",
     "Recall": "recall",
-    "AUC": "roc_auc",
     "F1 Score": "f1",
     "F2 Score": f2_score,
+    "AUC": "roc_auc",
 }
+
+
+def roc_auc_ci(y_true, y_score):
+    """ Computes AUROC with 95% confidence intervals
+    Uses the formula from 
+    :param y_true: True labels or binary label indicators
+    :param y_score: Target scores
+    """
+
+    # See https://stackoverflow.com/a/20864883/7662085
+    # zscore inside of which 95% of data lies
+    za2 = st.norm.ppf(0.975)
+
+    # From: https://gist.github.com/doraneko94/e24643136cfb8baf03ef8a314ab9615c
+    AUC = roc_auc_score(y_true, y_score)
+    N1, N2 = sum(y_true == True), sum(y_true != True)
+    Q1, Q2 = AUC / (2 - AUC), 2 * AUC ** 2 / (1 + AUC)
+    SE_AUC = math.sqrt(
+        (AUC * (1 - AUC) + (N1 - 1) * (Q1 - AUC ** 2) + (N2 - 1) * (Q2 - AUC ** 2))
+        / (N1 * N2)
+    )
+    lower, upper = max(AUC - za2 * SE_AUC, 0), min(AUC + za2 * SE_AUC, 1)
+    return lower, AUC, upper
 
 
 def joint_plot(
@@ -78,9 +103,7 @@ def joint_plot(
     ax.legend(loc=legend_location)
 
     if filename:
-        plt.savefig(
-            f"{Notebook.IMAGE_DIR}/{filename}_no_baseline.png", bbox_inches="tight"
-        )
+        plt.savefig(f"{filename}_no_baseline.png", bbox_inches="tight")
 
     if baseline_key in subplots.keys() and plot_baseline:
         subplots[baseline_key].plot(
@@ -89,7 +112,7 @@ def joint_plot(
     ax.legend(loc=legend_location)
 
     if filename:
-        plt.savefig(f"{Notebook.IMAGE_DIR}/{filename}.png", bbox_inches="tight")
+        plt.savefig(f"{filename}.png", bbox_inches="tight")
 
     plt.rc("axes", titlesize=12)  # Revert to default
 
@@ -253,14 +276,16 @@ def evaluate_from_pred(
     save=None,
     style="darkgrid",
 ):
+    lower, auc, upper = roc_auc_ci(y_true, y_pred_proba)
     metric_df = pd.DataFrame(
         {
             "Accuracy": accuracy_score(y_true, y_pred),
             "Precision": precision_score(y_true, y_pred, pos_label=pos_label),
             "Recall": recall_score(y_true, y_pred, pos_label=pos_label),
-            "AUC": roc_auc_score(y_true, y_pred_proba),
             "F1 Score": f1_score(y_true, y_pred, pos_label=pos_label),
             "F2 Score": fbeta_score(y_true, y_pred, beta=2, pos_label=pos_label),
+            "AUC": roc_auc_score(y_true, y_pred_proba),
+            "AUC_CI": f"{auc:.3f} ({lower:.3f}-{upper:.3f})",
         },
         index=["Model"],
     )
