@@ -10,7 +10,11 @@ import seaborn as sns
 
 
 from sklearn.base import clone as clone_estimator
-from sklearn.model_selection import train_test_split, cross_validate
+from sklearn.model_selection import (
+    train_test_split,
+    cross_validate,
+    StratifiedShuffleSplit,
+)
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -77,6 +81,21 @@ def roc_auc_ci(y_true, y_score):
     )
     lower, upper = max(AUC - za2 * SE_AUC, 0), min(AUC + za2 * SE_AUC, 1)
     return lower, AUC, upper
+
+
+def roc_auc_ci_bootstrap(y_true, y_score):
+    """ Computes AUROC with 95% confidence intervals by boostrapping """
+    res = st.bootstrap(
+        data=(y_true.to_numpy(), y_score),
+        statistic=roc_auc_score,
+        confidence_level=0.95,
+        method="percentile",
+        vectorized=False,
+        paired=True,
+        random_state=42,
+    )
+
+    return res.confidence_interval.low, res.confidence_interval.high
 
 
 def joint_plot(
@@ -276,7 +295,7 @@ def evaluate_from_pred(
     save=None,
     style="darkgrid",
 ):
-    lower, auc, upper = roc_auc_ci(y_true, y_pred_proba)
+    lower, upper = roc_auc_ci_bootstrap(y_true, y_pred_proba)
     metric_df = pd.DataFrame(
         {
             "Accuracy": accuracy_score(y_true, y_pred),
@@ -285,7 +304,7 @@ def evaluate_from_pred(
             "F1 Score": f1_score(y_true, y_pred, pos_label=pos_label),
             "F2 Score": fbeta_score(y_true, y_pred, beta=2, pos_label=pos_label),
             "AUC": roc_auc_score(y_true, y_pred_proba),
-            "AUC_CI": f"{auc:.3f} ({lower:.3f}-{upper:.3f})",
+            "AUC_CI": f"{lower:.3f}-{upper:.3f}",
         },
         index=["Model"],
     )
