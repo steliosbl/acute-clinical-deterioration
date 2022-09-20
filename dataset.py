@@ -742,7 +742,7 @@ class SCIData(pd.DataFrame):
             "c_Breathing_device": "A - Air",
             "c_Oxygen_flow_rate": 0.0,
             "c_Pain": False,
-            "c_Alert": False,
+            "c_Alert": True,
             "c_Nausea": False,
             "c_Vomiting_since_last_round": False,
             "c_Lying_down": False,
@@ -966,7 +966,7 @@ class SCIData(pd.DataFrame):
     def drop(self, cols, **kwargs):
         return SCIData(super(SCIData, self).drop(cols, **kwargs))
 
-    def derive_long_los(self, over=1, col='LongLOS'):
+    def derive_long_los(self, over=1, col="LongLOS"):
         r = self.copy()
         r[col] = r.TotalLOS >= over
 
@@ -1209,7 +1209,7 @@ class SCICols:
     ]
 
     admission = [
-        "ElectiveAdmission",
+        "AdmittedAfterAEC",
         "AdmissionMethodDescription",
         "AssessmentAreaAdmission",
         "AssessmentAreaDischarge",
@@ -1406,7 +1406,7 @@ class SCICols:
     xgb_types = {
         "Female": "i",
         "Age": "int",
-        "ElectiveAdmission": "i",
+        "AdmittedAfterAEC": "i",
         "AdmissionMethodDescription": "c",
         "AdmissionSpecialty": "c",
         "AgeBand": "c",
