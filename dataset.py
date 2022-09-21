@@ -294,7 +294,11 @@ class SCIData(pd.DataFrame):
         :return: New SCIData instance with the new feature added
         """
         r = self.copy()
-        r[col_name] = r.DiedDuringStay & (r.TotalLOS <= within)
+
+        if within is not None:
+            r[col_name] = r.DiedDuringStay & (r.TotalLOS <= within)
+        else:
+            r[col_name] = r.DiedDuringStay
 
         return SCIData(r)
 
@@ -326,7 +330,8 @@ class SCIData(pd.DataFrame):
         los_on_critical_admission.index = los_on_critical_admission.index.droplevel(1)
 
         # r["CriticalCare"] = m.any(axis=1)
-        r[col_name] = los_on_critical_admission <= within
+        
+        r[col_name] = los_on_critical_admission <= (within or 999)
         r[col_name].fillna(False, inplace=True)
 
         return SCIData(r)
@@ -840,7 +845,7 @@ class SCIData(pd.DataFrame):
 
         return SCIData(r)
 
-    def derive_critical_event(self, within=None, col_name="CriticalEvent"):
+    def derive_critical_event(self, within=None, col_name="CriticalEvent", return_subcols=False):
         """Determines the patients' critical event outcome.
         :param within: Time since admission to consider a critical event. E.g., 1.0 means it occurred within 24 hours, otherwise lived past 24 hours
         :return: New SCIData instance with the new feature added
@@ -852,6 +857,9 @@ class SCIData(pd.DataFrame):
 
         r = self.copy()
         r[col_name] = col
+        if return_subcols:
+            r['DiedWithinThreshold'] = temp.DiedWithinThreshold
+            r['CriticalCare'] = temp.CriticalCare
 
         return SCIData(r)
 

@@ -83,13 +83,14 @@ def roc_auc_ci(y_true, y_score):
     return lower, AUC, upper
 
 
-def roc_auc_ci_bootstrap(y_true, y_score):
+def roc_auc_ci_bootstrap(y_true, y_score, n_resamples=9999):
     """ Computes AUROC with 95% confidence intervals by boostrapping """
     res = st.bootstrap(
         data=(y_true.to_numpy(), y_score),
         statistic=roc_auc_score,
         confidence_level=0.95,
         method="percentile",
+        n_resamples=n_resamples,
         vectorized=False,
         paired=True,
         random_state=42,
@@ -294,8 +295,9 @@ def evaluate_from_pred(
     pos_label=1,
     save=None,
     style="darkgrid",
+    n_resamples=9999,
 ):
-    lower, upper = roc_auc_ci_bootstrap(y_true, y_pred_proba)
+    lower, upper = roc_auc_ci_bootstrap(y_true, y_pred_proba, n_resamples)
     metric_df = pd.DataFrame(
         {
             "Accuracy": accuracy_score(y_true, y_pred),
@@ -337,7 +339,9 @@ def evaluate_from_pred(
     return metric_df, roc_fig, pr_fig, cm_fig
 
 
-def evaluate(model, X, y, plot_title=None, save=None, style="darkgrid"):
+def evaluate(
+    model, X, y, plot_title=None, save=None, style="darkgrid", n_resamples=9999
+):
     y_pred = model.predict(X)
     try:
         y_pred_proba = model.predict_proba(X)[:, 1]
@@ -348,7 +352,13 @@ def evaluate(model, X, y, plot_title=None, save=None, style="darkgrid"):
             y_pred_proba = model.score_samples(X)
 
     return evaluate_from_pred(
-        y, y_pred, y_pred_proba, plot_title=plot_title, save=save, style=style
+        y,
+        y_pred,
+        y_pred_proba,
+        plot_title=plot_title,
+        save=save,
+        style=style,
+        n_resamples=n_resamples,
     )
 
 

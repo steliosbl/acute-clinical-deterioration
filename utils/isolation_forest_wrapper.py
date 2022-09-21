@@ -1,5 +1,20 @@
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import IsolationForest
+
+
+def isolationforestsplit(X_train, y_train, kf):
+    for train_index, test_index in kf.split(X_train, y_train):
+        if type(y_train) == pd.Series:
+            y_train = y_train.to_numpy()
+        trainy, validy = (
+            y_train[train_index],
+            y_train[test_index],
+        )
+
+        test_index = np.concatenate((train_index[trainy], test_index))
+        train_index = train_index[~trainy]
+        yield train_index, test_index
 
 
 class IsolationForestWrapper(IsolationForest):
