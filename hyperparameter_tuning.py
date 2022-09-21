@@ -90,10 +90,12 @@ class TabnetObjective:
         return avg
 
 
-def tune_tabnet(X_train, y_train, categorical_cols_idx, categorical_cols_dims):
+def tune_tabnet(
+    X_train, y_train, categorical_cols_idx, categorical_cols_dims, timeout=60 * 60
+):
     obj = TabnetObjective(X_train, y_train, categorical_cols_idx, categorical_cols_dims)
     study = optuna.create_study(direction="maximize", study_name="TabNet optimization")
-    study.optimize(obj, n_trials=1, n_jobs=-1, timeout=60 * 60)
+    study.optimize(obj, n_trials=1, n_jobs=-1, timeout=timeout)
     tabnet_params = dict(
         cat_idxs=categorical_cols_idx,
         cat_dims=categorical_cols_dims,
@@ -185,7 +187,7 @@ class XgboostObjective:
         model = ImbPipeline(
             steps=[("IMB", RandomUnderSampler()), ("XGB", XGBClassifier()),]
         ).set_params(**param)
-        cv = cross_validate(model, X_train, y_train, cv=5, scoring="roc_auc",)
+        cv = cross_validate(model, self.X_train, self.y_train, cv=5, scoring="roc_auc",)
         return cv["test_score"].mean()
 
 
@@ -292,7 +294,7 @@ class IsolationForestObjective:
                 self.y_train,
                 StratifiedKFold(n_splits=5, random_state=42, shuffle=True),
             ),
-            scoring='roc_auc'
+            scoring="roc_auc",
         )
         return cv["test_score"].mean()
 
@@ -312,30 +314,37 @@ def tune_isolationforest(X_train, y_train, n_trials=100, timeout=60 * 60, n_jobs
 
 class LogisticObjective:
     def __init__(self, X_train, y_train):
-        self.X_train, self.y_train = \
-            X_train, y_train
+        self.X_train, self.y_train = X_train, y_train
 
     def __call__(self, trial):
         param = {}
-        param['LR__penalty'] = trial.suggest_categorical('LR__penalty', ['l2', 'l1'])
-        if param['LR__penalty'] == 'l1':
-            param['LR__solver'] = 'saga'
+        param["LR__penalty"] = trial.suggest_categorical("LR__penalty", ["l2", "l1"])
+        if param["LR__penalty"] == "l1":
+            param["LR__solver"] = "saga"
         else:
-            param['LR__solver'] = 'lbfgs'
-        param['LR__C'] = trial.suggest_float('LR__C', 0.01, 10)
-        param['LR__class_weight'] = trial.suggest_categorical('LR__class_weight', [None, 'balanced'])
+            param["LR__solver"] = "lbfgs"
+        param["LR__C"] = trial.suggest_float("LR__C", 0.01, 10)
+        param["LR__class_weight"] = trial.suggest_categorical(
+            "LR__class_weight", [None, "balanced"]
+        )
         param["IMB__sampling_strategy"] = trial.suggest_float(
             "IMB__sampling_strategy", 0.1, 0.5
         )
 
         model = ImbPipeline(
-            steps=[("IMB", RandomUnderSampler()), ("LR", LogisticRegression(max_iter=10000))]
+            steps=[
+                ("IMB", RandomUnderSampler()),
+                ("LR", LogisticRegression(max_iter=10000)),
+            ]
         ).set_params(**param)
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
-            cv = cross_validate(model, self.X_train, self.y_train, cv=5, scoring="roc_auc")
+            cv = cross_validate(
+                model, self.X_train, self.y_train, cv=5, scoring="roc_auc"
+            )
         return cv["test_score"].mean()
+
 
 def tune_logisticregression(X_train, y_train, n_trials=100, timeout=60 * 60, n_jobs=-1):
     obj = LogisticObjective(X_train, y_train)
