@@ -17,8 +17,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from utils.isolation_forest_wrapper import IsolationForestWrapper, isolationforestsplit
 
-optuna.logging.set_verbosity(optuna.logging.WARNING)
-
+optuna.logging.set_verbosity(optuna.logging.DEBUG)
 
 class TabnetObjective:
     def __init__(self, X_train, y_train, categorical_cols_idx, categorical_cols_dims):
@@ -91,11 +90,16 @@ class TabnetObjective:
 
 
 def tune_tabnet(
-    X_train, y_train, categorical_cols_idx, categorical_cols_dims, timeout=60 * 60
+    X_train,
+    y_train,
+    categorical_cols_idx,
+    categorical_cols_dims,
+    timeout=60 * 60,
+    n_jobs=-1,
 ):
     obj = TabnetObjective(X_train, y_train, categorical_cols_idx, categorical_cols_dims)
     study = optuna.create_study(direction="maximize", study_name="TabNet optimization")
-    study.optimize(obj, n_trials=1, n_jobs=-1, timeout=timeout)
+    study.optimize(obj, n_trials=1, n_jobs=n_jobs, timeout=timeout)
     tabnet_params = dict(
         cat_idxs=categorical_cols_idx,
         cat_dims=categorical_cols_dims,
@@ -131,6 +135,7 @@ class XgboostObjective:
     def __call__(self, trial):
         param = {
             "XGB__verbosity": 0,
+            "XGB__n_jobs": 1,
             "XGB__objective": "binary:logistic",
             "XGB__enable_categorical": True,
             # use exact for small dataset.
@@ -210,6 +215,7 @@ def tune_lgbm(X_train, y_train, timeout=60 * 60):
         "boosting_type": "gbdt",
         "is_unbalance": True,
         "verbose": -1,
+        "n_jobs": 1
     }
 
     tuner = lgb.LightGBMTunerCV(
