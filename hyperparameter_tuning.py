@@ -82,7 +82,7 @@ class TabnetObjective:
                 y_train=y_train_tn,
                 eval_set=[(X_valid_tn, y_valid_tn)],
                 patience=trial.suggest_int("patience", low=15, high=30),
-                max_epochs=trial.suggest_int("epochs", 1, 100),
+                max_epochs=50,
                 eval_metric=["auc"],
             )
             CV_score_array.append(clf.best_cost)
@@ -126,7 +126,7 @@ def tune_tabnet(
     print("BEST PARAMETERS")
     print(study.best_params)
 
-    return tabnet_params, study.best_params["epochs"], study.best_params["patience"]
+    return tabnet_params, 100, study.best_params["patience"]
 
 
 class XgboostObjective:
@@ -140,14 +140,15 @@ class XgboostObjective:
             "XGB__missing": -1,
             "XGB__objective": "binary:logistic",
             "XGB__enable_categorical": True,
+            "XGB__booster": "gbtree",
             # use exact for small dataset.
             "XGB__tree_method": trial.suggest_categorical(
                 "XGB__tree_method", ["approx", "hist"]
             ),
             # defines booster, gblinear for linear functions.
-            "XGB__booster": trial.suggest_categorical(
-                "XGB__booster", ["gbtree", "gblinear", "dart"]
-            ),
+            # "XGB__booster": trial.suggest_categorical(
+            #     "XGB__booster", ["gbtree", "gblinear", "dart"]  # Cant use this, due to SHAP limitations
+            # ),
             # L2 regularization weight.
             "XGB__lambda": trial.suggest_float("XGB__lambda", 1e-8, 1.0, log=True),
             # L1 regularization weight.

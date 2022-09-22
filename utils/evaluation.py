@@ -23,6 +23,7 @@ from sklearn.metrics import (
     f1_score,
     fbeta_score,
     make_scorer,
+    confusion_matrix,
     precision_recall_curve,
     ConfusionMatrixDisplay,
     RocCurveDisplay,
@@ -312,6 +313,8 @@ def evaluate_from_pred(
     )
 
     display(metric_df)
+
+    display(confusion_matrix(y_true, y_pred))
 
     sns.set_style(style)
     fig, ax = plt.subplots(1, 3, figsize=(16, 5))
