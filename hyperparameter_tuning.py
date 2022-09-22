@@ -19,6 +19,7 @@ from utils.isolation_forest_wrapper import IsolationForestWrapper, isolationfore
 
 optuna.logging.set_verbosity(optuna.logging.DEBUG)
 
+
 class TabnetObjective:
     def __init__(self, X_train, y_train, categorical_cols_idx, categorical_cols_dims):
         (
@@ -66,7 +67,7 @@ class TabnetObjective:
         )  # early stopping
         kf = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
         CV_score_array = []
-        for train_index, test_index in kf.split(X_train, y_train):
+        for train_index, test_index in kf.split(self.X_train, self.y_train):
             X_train_tn, X_valid_tn = (
                 self.X_train[train_index],
                 self.X_train[test_index],
@@ -136,57 +137,60 @@ class XgboostObjective:
         param = {
             "XGB__verbosity": 0,
             "XGB__n_jobs": 1,
+            "XGB__missing": -1,
             "XGB__objective": "binary:logistic",
             "XGB__enable_categorical": True,
             # use exact for small dataset.
             "XGB__tree_method": trial.suggest_categorical(
-                "tree_method", ["approx", "hist"]
+                "XGB__tree_method", ["approx", "hist"]
             ),
             # defines booster, gblinear for linear functions.
             "XGB__booster": trial.suggest_categorical(
-                "booster", ["gbtree", "gblinear", "dart"]
+                "XGB__booster", ["gbtree", "gblinear", "dart"]
             ),
             # L2 regularization weight.
-            "XGB__lambda": trial.suggest_float("lambda", 1e-8, 1.0, log=True),
+            "XGB__lambda": trial.suggest_float("XGB__lambda", 1e-8, 1.0, log=True),
             # L1 regularization weight.
-            "XGB__alpha": trial.suggest_float("alpha", 1e-8, 1.0, log=True),
+            "XGB__alpha": trial.suggest_float("XGB__alpha", 1e-8, 1.0, log=True),
             # sampling ratio for training data.
-            "XGB__subsample": trial.suggest_float("subsample", 0.2, 1.0),
+            "XGB__subsample": trial.suggest_float("XGB__subsample", 0.2, 1.0),
             # sampling according to each tree.
-            "XGB__colsample_bytree": trial.suggest_float("colsample_bytree", 0.2, 1.0),
+            "XGB__colsample_bytree": trial.suggest_float(
+                "XGB__colsample_bytree", 0.2, 1.0
+            ),
             # weighting for imbalance
-            "XGB__scale_pos_weight": trial.suggest_int("scale_pos_weight", 1, 100),
+            "XGB__scale_pos_weight": trial.suggest_int("XGB__scale_pos_weight", 1, 100),
             "IMB__sampling_strategy": trial.suggest_float(
-                "IMB_sampling_strategy", 0.1, 0.5
+                "IMB__sampling_strategy", 0.1, 0.5
             ),
         }
 
         if param["XGB__booster"] in ["gbtree", "dart"]:
             # maximum depth of the tree, signifies complexity of the tree.
-            param["XGB__max_depth"] = trial.suggest_int("max_depth", 3, 9, step=2)
+            param["XGB__max_depth"] = trial.suggest_int("XGB__max_depth", 3, 9, step=2)
             # minimum child weight, larger the term more conservative the tree.
             param["XGB__min_child_weight"] = trial.suggest_int(
-                "min_child_weight", 2, 10
+                "XGB__min_child_weight", 2, 10
             )
-            param["XGB__eta"] = trial.suggest_float("eta", 1e-8, 1.0, log=True)
+            param["XGB__eta"] = trial.suggest_float("XGB__eta", 1e-8, 1.0, log=True)
             # defines how selective algorithm is.
-            param["XGB__gamma"] = trial.suggest_float("gamma", 1e-8, 1.0, log=True)
+            param["XGB__gamma"] = trial.suggest_float("XGB__gamma", 1e-8, 1.0, log=True)
             param["XGB__grow_policy"] = trial.suggest_categorical(
-                "grow_policy", ["depthwise", "lossguide"]
+                "XGB__grow_policy", ["depthwise", "lossguide"]
             )
 
         if param["XGB__booster"] == "dart":
             param["XGB__sample_type"] = trial.suggest_categorical(
-                "sample_type", ["uniform", "weighted"]
+                "XGB__sample_type", ["uniform", "weighted"]
             )
             param["XGB__normalize_type"] = trial.suggest_categorical(
-                "normalize_type", ["tree", "forest"]
+                "XGB__normalize_type", ["tree", "forest"]
             )
             param["XGB__rate_drop"] = trial.suggest_float(
-                "rate_drop", 1e-8, 1.0, log=True
+                "XGB__rate_drop", 1e-8, 1.0, log=True
             )
             param["XGB__skip_drop"] = trial.suggest_float(
-                "skip_drop", 1e-8, 1.0, log=True
+                "XGB__skip_drop", 1e-8, 1.0, log=True
             )
 
         model = ImbPipeline(
@@ -207,7 +211,7 @@ def tune_xgboost(X_train, y_train, n_trials=100, timeout=60 * 60, n_jobs=-1):
     return study.best_params
 
 
-def tune_lgbm(X_train, y_train, timeout=60 * 60):
+def tune_lgbm(X_train, y_train, timeout=60 * 60, n_jobs=-1):
     dtrain = lgb.Dataset(X_train, label=y_train)
     params = {
         "objective": "binary",
@@ -215,7 +219,7 @@ def tune_lgbm(X_train, y_train, timeout=60 * 60):
         "boosting_type": "gbdt",
         "is_unbalance": True,
         "verbose": -1,
-        "n_jobs": 1
+        "n_jobs": 1,
     }
 
     tuner = lgb.LightGBMTunerCV(
@@ -323,7 +327,7 @@ class LogisticObjective:
         self.X_train, self.y_train = X_train, y_train
 
     def __call__(self, trial):
-        param = {}
+        param = {"LR__max_iter": 10000}
         param["LR__penalty"] = trial.suggest_categorical("LR__penalty", ["l2", "l1"])
         if param["LR__penalty"] == "l1":
             param["LR__solver"] = "saga"
@@ -338,10 +342,7 @@ class LogisticObjective:
         )
 
         model = ImbPipeline(
-            steps=[
-                ("IMB", RandomUnderSampler()),
-                ("LR", LogisticRegression(max_iter=10000)),
-            ]
+            steps=[("IMB", RandomUnderSampler()), ("LR", LogisticRegression()),]
         ).set_params(**param)
 
         with warnings.catch_warnings():

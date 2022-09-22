@@ -6,6 +6,21 @@ import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 import seaborn as sns
 
+def drop_exclusive_cols(X1, X2):
+    exclusive_cols = set(X1.columns) ^ set(X2.columns)
+    X1.drop(exclusive_cols, axis=1, errors="ignore", inplace=True)
+    X2.drop(exclusive_cols, axis=1, errors="ignore", inplace=True)
+
+
+def ensure_categorical_overlap(X1, X2, cols_to_check):
+    for col in cols_to_check:
+        col = X1.columns[col]
+        X1_uniq, X2_uniq = X1[col].unique(), X2[col].unique()
+        to_remove = list(set(X1_uniq) ^ set(X2_uniq))
+        repl = list(set(X1_uniq) & set(X2_uniq))[0]
+        X1.loc[X1[col].isin(to_remove), col] = repl
+        X2.loc[X2[col].isin(to_remove), col] = repl
+
 
 def missing_data(
     df, subset=[], title="Proportion of missing values per column", ax=None
