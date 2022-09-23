@@ -36,25 +36,15 @@ class TabnetObjective:
         )
 
     def __call__(self, trial):
-        mask_type = trial.suggest_categorical("mask_type", ["entmax", "sparsemax"])
         n_da = trial.suggest_int("n_da", 56, 64, step=4)
-        n_steps = trial.suggest_int("n_steps", 1, 3, step=1)
-        gamma = trial.suggest_float("gamma", 1.0, 1.4, step=0.2)
-        n_shared = trial.suggest_int("n_shared", 1, 3)
-        lambda_sparse = trial.suggest_float("lambda_sparse", 1e-6, 1e-3, log=True)
 
         tabnet_params = dict(
             cat_idxs=self.categorical_cols_idx,
             cat_dims=self.categorical_cols_dims,
-            n_d=n_da,
-            n_a=n_da,
-            n_steps=n_steps,
-            gamma=gamma,
-            lambda_sparse=lambda_sparse,
             optimizer_fn=torch.optim.Adam,
-            optimizer_params=dict(lr=2e-2, weight_decay=1e-5),
-            mask_type=mask_type,
-            n_shared=n_shared,
+            scheduler_fn=torch.optim.lr_scheduler.ReduceLROnPlateau,
+            verbose=0,
+            device_name="cuda" if torch.cuda.is_available() else "cpu",
             scheduler_params=dict(
                 mode="min",
                 patience=trial.suggest_int(
@@ -63,25 +53,26 @@ class TabnetObjective:
                 min_lr=1e-5,
                 factor=0.5,
             ),
-            scheduler_fn=torch.optim.lr_scheduler.ReduceLROnPlateau,
-            verbose=0,
-        )  # early stopping
-        kf = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
+
+            n_d=n_da,
+            n_a=n_da,
+            n_steps=trial.suggest_int("n_steps", 1, 3, step=1),
+            gamma=trial.suggest_float("gamma", 1.0, 1.4, step=0.2),
+            lambda_sparse=trial.suggest_float("lambda_sparse", 1e-6, 1e-3, log=True),
+            optimizer_params=dict(lr=2e-2, weight_decay=1e-5),
+            mask_type=trial.suggest_categorical("mask_type", ["entmax", "sparsemax"]),
+            n_shared=trial.suggest_int("n_shared", 1, 3),
+        ) 
+
         CV_score_array = []
-        for train_index, test_index in kf.split(self.X_train, self.y_train):
-            X_train_tn, X_valid_tn = (
-                self.X_train[train_index],
-                self.X_train[test_index],
-            )
-            y_train_tn, y_valid_tn = (
-                self.y_train[train_index],
-                self.y_train[test_index],
-            )
+        for train_index, test_index in StratifiedKFold(
+            n_splits=5, random_state=42, shuffle=True
+        ).split(self.X_train, self.y_train):
             clf = TabNetClassifier(**tabnet_params)
             clf.fit(
-                X_train=X_train_tn,
-                y_train=y_train_tn,
-                eval_set=[(X_valid_tn, y_valid_tn)],
+                X_train=self.X_train[train_index],
+                y_train=self.y_train[train_index],
+                eval_set=[(self.X_train[test_index], self.y_train[test_index])],
                 patience=trial.suggest_int("patience", low=15, high=30),
                 max_epochs=50,
                 eval_metric=["auc"],
@@ -98,38 +89,30 @@ def tune_tabnet(
     y_train,
     categorical_cols_idx,
     categorical_cols_dims,
+    n_trials=100,
     timeout=60 * 60,
     n_jobs=-1,
 ):
+    if torch.cuda.is_available():
+        n_jobs = 1
+
     obj = TabnetObjective(X_train, y_train, categorical_cols_idx, categorical_cols_dims)
     study = optuna.create_study(direction="maximize", study_name="TabNet optimization")
-    study.optimize(obj, n_trials=1, n_jobs=n_jobs, timeout=timeout)
-    tabnet_params = dict(
-        cat_idxs=categorical_cols_idx,
-        cat_dims=categorical_cols_dims,
-        n_a=study.best_params["n_da"],
-        n_d=study.best_params["n_da"],
-        n_steps=study.best_params["n_steps"],
-        gamma=study.best_params["gamma"],
-        lambda_sparse=study.best_params["lambda_sparse"],
-        optimizer_fn=torch.optim.Adam,
-        optimizer_params=dict(lr=2e-2, weight_decay=1e-5),
-        mask_type=study.best_params["mask_type"],
-        n_shared=study.best_params["n_shared"],
-        scheduler_params=dict(
-            mode="min",
-            patience=study.best_params["patienceScheduler"],
-            min_lr=1e-5,
-            factor=0.5,
-        ),
-        scheduler_fn=torch.optim.lr_scheduler.ReduceLROnPlateau,
-        verbose=0,
-    )
+    study.optimize(obj, n_trials=n_trials, n_jobs=n_jobs, timeout=timeout)
+    
+    r = study.best_params.copy()
+    r.update(dict(
+        n_a=r["n_da"],
+        n_d=r["n_da"],
+    ))
+    del r['n_da']
+    del r['patience']
+    del r['patienceScheduler']
 
     print("BEST PARAMETERS")
-    print(study.best_params)
+    print(r)
 
-    return tabnet_params, 100, study.best_params["patience"]
+    return r, study.best_params['patience'], study.best_params['patienceScheduler']
 
 
 class XgboostObjective:
