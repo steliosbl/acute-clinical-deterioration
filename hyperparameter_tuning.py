@@ -1,11 +1,9 @@
 import warnings
 import numpy as np
 import torch, optuna
-from pytorch_tabnet.tab_model import TabNetClassifier
+
 from sklearn.model_selection import StratifiedKFold, cross_validate
 
-
-from xgboost import XGBClassifier
 from imblearn.pipeline import Pipeline as ImbPipeline
 from imblearn.under_sampling import RandomUnderSampler
 
@@ -13,11 +11,14 @@ import optuna.integration.lightgbm as lgb
 from lightgbm import early_stopping
 from lightgbm import log_evaluation
 
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from utils.isolation_forest_wrapper import IsolationForestWrapper, isolationforestsplit
+from pytorch_tabnet.tab_model import TabNetClassifier
 
-optuna.logging.set_verbosity(optuna.logging.DEBUG)
+optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
 class TabnetObjective:
@@ -84,6 +85,8 @@ class TabnetObjective:
                 patience=trial.suggest_int("patience", low=15, high=30),
                 max_epochs=50,
                 eval_metric=["auc"],
+                weights=1,
+                drop_last=False,
             )
             CV_score_array.append(clf.best_cost)
         avg = np.mean(CV_score_array)
@@ -212,32 +215,105 @@ def tune_xgboost(X_train, y_train, n_trials=100, timeout=60 * 60, n_jobs=-1):
     return study.best_params
 
 
-def tune_lgbm(X_train, y_train, timeout=60 * 60, n_jobs=-1):
-    dtrain = lgb.Dataset(X_train, label=y_train)
-    params = {
-        "objective": "binary",
-        "metrics": ["binary_logloss", "auc"],
-        "boosting_type": "gbdt",
-        "is_unbalance": True,
-        "verbose": -1,
-        "n_jobs": 1,
-    }
+class LgbmObjective:
+    def __init__(self, X_train, y_train, categorical_cols_idx):
+        self.X_train, self.y_train, self.categorical_cols_idx = (
+            X_train,
+            y_train,
+            categorical_cols_idx,
+        )
 
-    tuner = lgb.LightGBMTunerCV(
-        params,
-        dtrain,
-        folds=StratifiedKFold(n_splits=3),
-        callbacks=[
-            early_stopping(100, verbose=False),
-            log_evaluation(100, show_stdv=False),
-        ],
-        time_budget=timeout,
-        show_progress_bar=False,
+    def __call__(self, trial):
+        param = {
+            "LGBM__objective": "binary",
+            "LGBM__metric": ["l2", "auc"],
+            "LGBM__verbose": -1,
+            "LGBM__boosting_type": "gbdt",
+            "LGBM__is_unbalance": True,
+            "LGBM__n_jobs": 1,
+            "LGBM__categorical_feature": self.categorical_cols_idx,
+            "LGBM__lambda_l1": trial.suggest_float(
+                "LGBM__lambda_l1", 1e-8, 10.0, log=True
+            ),
+            "LGBM__lambda_l2": trial.suggest_float(
+                "LGBM__lambda_l2", 1e-8, 10.0, log=True
+            ),
+            "LGBM__num_leaves": trial.suggest_int("LGBM__num_leaves", 2, 256),
+            "LGBM__feature_fraction": trial.suggest_float(
+                "LGBM__feature_fraction", 0.4, 1.0
+            ),
+            "LGBM__bagging_fraction": trial.suggest_float(
+                "LGBM__bagging_fraction", 0.4, 1.0
+            ),
+            "LGBM__bagging_freq": trial.suggest_int("LGBM__bagging_freq", 1, 7),
+            "LGBM__min_child_samples": trial.suggest_int(
+                "LGBM__min_child_samples", 5, 100
+            ),
+            "IMB__sampling_strategy": trial.suggest_float(
+                "IMB__sampling_strategy", 0.1, 0.5
+            ),
+        }
+
+        model = ImbPipeline(
+            steps=[("IMB", RandomUnderSampler()), ("LGBM", LGBMClassifier()),]
+        ).set_params(**param)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            cv = cross_validate(
+                model,
+                self.X_train,
+                self.y_train,
+                cv=5,
+                scoring="roc_auc",
+                fit_params={"LGBM__categorical_feature": self.categorical_cols_idx},
+            )
+        return cv["test_score"].mean()
+
+
+def tune_lgbm(
+    X_train, y_train, categorical_cols_idx, n_trials=100, timeout=60 * 60, n_jobs=-1
+):
+    obj = LgbmObjective(X_train, y_train, categorical_cols_idx)
+    study = optuna.create_study(
+        direction="maximize", study_name="LightGBM optimization"
     )
+    study.optimize(obj, n_trials=n_trials, timeout=timeout, n_jobs=n_jobs)
 
-    tuner.run()
+    print("BEST PARAMETERS")
+    print(study.best_params)
 
-    return tuner.best_params
+    return study.best_params
+
+
+# def tune_lgbm(X_train, y_train, timeout=60 * 60, n_jobs=-1):
+#     dtrain = lgb.Dataset(X_train, label=y_train)
+#     params = {
+#         # "objective": "binary",
+#         "metrics": ["l2", "auc"],
+#         "boosting_type": "gbdt",
+#         "is_unbalance": True,
+#         "verbose": -1,
+#         "n_jobs": 1,
+#     }
+
+#     tuner = lgb.LightGBMTunerCV(
+#         params,
+#         dtrain,
+#         folds=StratifiedKFold(n_splits=3),
+#         callbacks=[
+#             early_stopping(100, verbose=False),
+#             log_evaluation(100, show_stdv=False),
+#         ],
+#         time_budget=timeout,
+#         show_progress_bar=False,
+#     )
+
+#     tuner.run()
+
+#     print("BEST PARAMETERS")
+#     print(tuner.best_params)
+
+#     return tuner.best_params
 
 
 class RandomForestObjective:
