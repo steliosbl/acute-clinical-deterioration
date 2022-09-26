@@ -4,6 +4,7 @@
  - The first commercial AI system using EHR data to receive clearance for widespread clinical use by the FDA was WAVE [Parikh19]. 
  - Standard outcomes EWSs are used to track are mortality and ICU admission [Gerry20, pp. 1], while prior literature has used used ML to stratify patients according to their risk of mortality, admission to hospital or to the ICU, acute morbidity and infectious diseases, expected resource use, etc [Fernandes20]. 
  - Historically paper-based points-based EWS make the assumption that each vital sign considered has the same predictive value [per Churpek12, from Gerry20, pp. 10].
+ - ML can learn from and make predictions on data without needing to be explicitly programmed. 
  
 ## Electronic records and EWS
  - EWSs have historically been designed for paper charts, and were often expected to be calculated by hand. This includes the points-based NEWS [RCP17]. However, they are increasingly being integrated into EHR systems [Gerry20, pp. 1]. 
