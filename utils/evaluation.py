@@ -378,7 +378,7 @@ def evaluate_from_pred(
     plt.suptitle(plot_title)
 
     if save:
-        plt.savefig(save, bbox_inches="tight")
+        plt.savefig(save, bbox_inches="tight", dpi=100)
 
     return metric_df, roc_fig, pr_fig, cm_fig
 
