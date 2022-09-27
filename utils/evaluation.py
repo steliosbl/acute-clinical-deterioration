@@ -61,6 +61,38 @@ METRICS = {
 }
 
 
+def plot_alert_rate(y_pred_probas, y_test, n_days, intercept="NEWS", save=None):
+    fig, ax = plt.subplots(1, 1, figsize=(7, 7))
+    points = []
+    for model, y_pred_proba in y_pred_probas.items():
+        precision, recall, thresholds = precision_recall_curve(y_test, y_pred_proba)
+        n_pos = (
+            np.array(
+                [
+                    np.where(y_pred_proba > threshold, 1, 0).sum()
+                    for threshold in thresholds
+                ]
+            )
+            / n_days
+        )
+        r = [(*_, model) for _ in zip(recall, n_pos)]
+        if model != "NEWS":
+            r = r[::100]
+        points += r
+
+    data = pd.DataFrame(points, columns=["Sensitivity", "Alerts per day", "Model"])
+
+    sns.lineplot(
+        data=data, x="Sensitivity", y="Alerts per day", hue="Model", ax=ax, linewidth=2
+    )
+    if "NEWS" in y_pred_probas:
+        ax.lines[list(y_pred_probas.keys()).index("NEWS")].set_linestyle("--")
+
+    ax.set_title("Sensitivity vs. Alert Rate")
+    if save:
+        plt.savefig(save, bbox_inches="tight")
+
+
 def roc_auc_ci(y_true, y_score):
     """ Computes AUROC with 95% confidence intervals
     Uses the formula from 
@@ -330,9 +362,18 @@ def evaluate_from_pred(
     if (-1) in np.array(y_true):
         get = {1: True, -1: False}.get
         y_true, y_pred = (list(map(get, y_true)), list(map(get, y_pred)))
-    cm_fig = ConfusionMatrixDisplay.from_predictions(
-        y_true, y_pred, ax=ax[2], normalize="true", values_format=".2%"
-    )
+
+    cm_fig = ConfusionMatrixDisplay(
+        np.rot90(np.flipud(confusion_matrix(y_true, y_pred, normalize="true"))),
+        display_labels=[1, 0],
+    ).plot(values_format=".2%", ax=ax[2])
+
+    ax[2].set_xlabel("True Class")
+    ax[2].set_ylabel("Predicted Class")
+
+    # cm_fig = ConfusionMatrixDisplay.from_predictions(
+    #     y_true, y_pred, ax=ax[1], normalize="true", values_format=".2%"
+    # )
 
     plt.suptitle(plot_title)
 
