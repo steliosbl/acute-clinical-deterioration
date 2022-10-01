@@ -53,7 +53,6 @@ class TabnetObjective:
                 min_lr=1e-5,
                 factor=0.5,
             ),
-
             n_d=n_da,
             n_a=n_da,
             n_steps=trial.suggest_int("n_steps", 1, 3, step=1),
@@ -62,7 +61,7 @@ class TabnetObjective:
             optimizer_params=dict(lr=2e-2, weight_decay=1e-5),
             mask_type=trial.suggest_categorical("mask_type", ["entmax", "sparsemax"]),
             n_shared=trial.suggest_int("n_shared", 1, 3),
-        ) 
+        )
 
         CV_score_array = []
         for train_index, test_index in StratifiedKFold(
@@ -99,20 +98,17 @@ def tune_tabnet(
     obj = TabnetObjective(X_train, y_train, categorical_cols_idx, categorical_cols_dims)
     study = optuna.create_study(direction="maximize", study_name="TabNet optimization")
     study.optimize(obj, n_trials=n_trials, n_jobs=n_jobs, timeout=timeout)
-    
+
     r = study.best_params.copy()
-    r.update(dict(
-        n_a=r["n_da"],
-        n_d=r["n_da"],
-    ))
-    del r['n_da']
-    del r['patience']
-    del r['patienceScheduler']
+    r.update(dict(n_a=r["n_da"], n_d=r["n_da"],))
+    del r["n_da"]
+    del r["patience"]
+    del r["patienceScheduler"]
 
     print("BEST PARAMETERS")
     print(r)
 
-    return r, study.best_params['patience'], study.best_params['patienceScheduler']
+    return r, study.best_params["patience"], study.best_params["patienceScheduler"]
 
 
 class XgboostObjective:

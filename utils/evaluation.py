@@ -25,6 +25,8 @@ from sklearn.metrics import (
     make_scorer,
     confusion_matrix,
     precision_recall_curve,
+    roc_curve,
+    average_precision_score,
     ConfusionMatrixDisplay,
     RocCurveDisplay,
     PrecisionRecallDisplay,
@@ -36,6 +38,8 @@ from imblearn.under_sampling import RandomUnderSampler, TomekLinks
 from imblearn.over_sampling import SMOTE, SMOTENC
 
 from pytorch_tabnet.metrics import Metric as TabNetMetric
+
+from shapely.geometry import LineString
 
 
 f2_score = make_scorer(fbeta_score, beta=2)
@@ -61,36 +65,77 @@ METRICS = {
 }
 
 
-def plot_alert_rate(y_pred_probas, y_test, n_days, intercept="NEWS", save=None):
-    fig, ax = plt.subplots(1, 1, figsize=(7, 7))
-    points = []
-    for model, y_pred_proba in y_pred_probas.items():
-        precision, recall, thresholds = precision_recall_curve(y_test, y_pred_proba)
-        n_pos = (
-            np.array(
-                [
-                    np.where(y_pred_proba > threshold, 1, 0).sum()
-                    for threshold in thresholds
-                ]
-            )
-            / n_days
+def alert_rate_curve(y_true, y_score, n_days, sample=None):
+    precision, recall, thresholds = precision_recall_curve(y_true, y_score)
+    alert_rate = (
+        np.array(
+            [np.where(y_score > threshold, 1, 0).sum() for threshold in thresholds]
         )
-        r = [(*_, model) for _ in zip(recall, n_pos)]
-        if model != "NEWS":
-            r = r[::100]
-        points += r
+        / n_days
+    )
 
-    data = pd.DataFrame(points, columns=["Sensitivity", "Alerts per day", "Model"])
+    if sample is not None:
+        return recall[::sample], alert_rate[::sample]
+    else:
+        return recall[:-1], alert_rate
+
+
+def find_earliest_intersection(x1, y1, x2, y2, after=0.7):
+    intersection = LineString(np.column_stack((x1, y1))).intersection(
+        LineString(np.column_stack((x2, y2)))
+    )
+
+    if type(intersection) != LineString:
+        intersection = LineString(intersection.geoms)
+
+    if not intersection.xy[0]:
+        return None
+
+    return next(
+        _ for _ in sorted(zip(*intersection.xy), key=lambda xy: xy[0]) if _[0] > 0.7
+    )
+
+
+def plot_alert_rate(y_pred_probas, y_test, n_days, intercept=None, ax=None, save=None):
+    sns.set_style("white")
+    plt.rc("axes", titlesize=16)
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+
+    x_intercept, y_intercept = alert_rate_curve(
+        y_test, y_pred_probas[intercept], n_days, sample=None
+    )
+    for idx, (model, y_pred_proba) in enumerate(y_pred_probas.items()):
+        if model == intercept:
+            continue
+
+        x, y = alert_rate_curve(y_test, y_pred_proba, n_days, sample=100)
+        intersection = find_earliest_intersection(x_intercept, y_intercept, x, y)
+        sns.lineplot(
+            x=x, y=y, label=model, linewidth=2, ax=ax, color=sns.color_palette()[idx]
+        )
+        if intersection:
+            ax.plot(*intersection, marker="x", color="black")
+            ax.annotate(
+                text=round(intersection[0], 3),
+                xy=intersection,
+                xytext=(1 - 0.03, intersection[1] - 0.4),
+            )
 
     sns.lineplot(
-        data=data, x="Sensitivity", y="Alerts per day", hue="Model", ax=ax, linewidth=2
+        x=x_intercept,
+        y=y_intercept,
+        label=intercept,
+        linestyle="--",
+        linewidth=2,
+        ax=ax,
+        color="tomato",
     )
-    if "NEWS" in y_pred_probas:
-        ax.lines[list(y_pred_probas.keys()).index("NEWS")].set_linestyle("--")
 
     ax.set_title("Sensitivity vs. Alert Rate")
     if save:
         plt.savefig(save, bbox_inches="tight")
+    plt.rc("axes", titlesize=12)
 
 
 def roc_auc_ci(y_true, y_score):
@@ -141,6 +186,7 @@ def joint_plot(
     legend_location="lower right",
     baseline_key="Baseline (NEWS)",
     plot_baseline=True,
+    linewidth=1,
 ):
     sns.set_style(style)
     plt.rc("axes", titlesize=16)
@@ -150,7 +196,7 @@ def joint_plot(
 
     for key, plot in subplots.items():
         if key != baseline_key:
-            plot.plot(ax=ax, name=key)
+            plot.plot(ax=ax, name=key, linewidth=linewidth)
 
     ax.set_title(title)
     ax.legend(loc=legend_location)
@@ -160,7 +206,11 @@ def joint_plot(
 
     if baseline_key in subplots.keys() and plot_baseline:
         subplots[baseline_key].plot(
-            ax=ax, linestyle="--", color="dimgray", name=baseline_key
+            ax=ax,
+            linestyle="--",
+            color="dimgray",
+            name=baseline_key,
+            linewidth=linewidth,
         )
     ax.legend(loc=legend_location)
 
@@ -320,6 +370,164 @@ def with_sampling_strategies(clf, clf_name="Classifier", categorical_cols_idx=[]
     }
 
 
+def plot_confusion_matrix(y_true, y_pred, ax=None, save=None, plot_title=None):
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+
+    ax.grid(False)
+    cm_fig = ConfusionMatrixDisplay(
+        np.rot90(np.flipud(confusion_matrix(y_true, y_pred, normalize="true"))),
+        display_labels=[1, 0],
+    ).plot(values_format=".2%", ax=ax)
+
+    ax.set_xlabel("True Class")
+    ax.set_ylabel("Predicted Class")
+    ax.set_title(plot_title)
+
+    if save:
+        plt.savefig(save, bbox_inches="tight", dpi=200)
+
+    return cm_fig
+
+
+def evaluate_multiple(
+    y_true, y_preds, n_resamples=99, news_modelkey=None, linewidth=2, save=None,
+):
+    sns.set_style("white")
+    sns.set_palette("tab10")
+    plt.rc("axes", titlesize=16)
+    fig, ax = plt.subplots(1, 2, figsize=(14, 6))
+    metrics = []
+    for idx, (modelkey, (y_pred, y_pred_proba)) in enumerate(y_preds.items()):
+        linestyle = "--" if modelkey == news_modelkey else "-"
+        color = "tomato" if modelkey == news_modelkey else sns.color_palette()[idx]
+        lower, upper = roc_auc_ci_bootstrap(y_true, y_pred_proba, n_resamples)
+        auc = roc_auc_score(y_true, y_pred_proba)
+        metrics.append(
+            {
+                "Model": modelkey,
+                "Accuracy": accuracy_score(y_true, y_pred),
+                "Precision": precision_score(y_true, y_pred),
+                "Recall": recall_score(y_true, y_pred),
+                "F1 Score": f1_score(y_true, y_pred),
+                "F2 Score": fbeta_score(y_true, y_pred, beta=2),
+                "AUC": auc,
+                "AUC_CI": f"{auc:.3f} ({lower:.3f}-{upper:.3f})",
+            }
+        )
+        fpr, tpr, _ = roc_curve(y_true, y_pred_proba)
+        precision, recall, _ = precision_recall_curve(y_true, y_pred_proba)
+        ap = average_precision_score(y_true, y_pred_proba)
+
+        sns.lineplot(
+            x=fpr,
+            y=tpr,
+            label=f"{modelkey} (AUC = {auc:.2f})",
+            linewidth=linewidth,
+            linestyle=linestyle,
+            color=color,
+            ax=ax[0],
+        )
+        sns.lineplot(
+            x=recall,
+            y=precision,
+            label=f"{modelkey} (AP = {ap:.2f})",
+            linewidth=linewidth,
+            linestyle=linestyle,
+            color=color,
+            ax=ax[1],
+        )
+        # roc_fig = RocCurveDisplay.from_predictions(
+        #     y_true,
+        #     y_pred_proba,
+        #     ax=ax[0],
+        #     linewidth=linewidth,
+        #     name=modelkey,
+        #     linestyle=linestyle,
+        #     color=color,
+        # )
+
+        # pr_fig = PrecisionRecallDisplay.from_predictions(
+        #     y_true,
+        #     y_pred_proba,
+        #     name=modelkey,
+        #     linestyle=linestyle,
+        #     ax=ax[1],
+        #     linewidth=linewidth,
+        #     color=color,
+        # )
+
+    ax[0].set_title("Receiver Operating Characteristic (ROC)")
+    ax[1].set_title("Precision-Recall")
+    ax[1].legend(loc="upper right")
+
+    metrics = pd.DataFrame(metrics).set_index("Model")
+    display(metrics)
+
+    if save:
+        plt.savefig(save, bbox_inches="tight", dpi=100)
+
+    plt.rc("axes", titlesize=12)
+
+
+def evaluate_all_outcomes(
+    y_true,
+    y_true_mortality,
+    y_true_criticalcare,
+    y_pred,
+    y_pred_proba,
+    modelkey,
+    n_resamples=9999,
+    news_prcurve_fix=False,
+    linewidth=2,
+    save=None,
+):
+    sns.set_style("darkgrid")
+    sns.set_palette("tab10")
+    fig, ax = plt.subplots(1, 3, figsize=(16, 5))
+
+    metrics = []
+    for ylabel, y in [
+        ("Critical event", y_true),
+        ("Mortality only", y_true_mortality),
+        ("Critical care", y_true_criticalcare),
+    ]:
+        lower, upper = roc_auc_ci_bootstrap(y, y_pred_proba, n_resamples)
+        metrics.append(
+            {
+                modelkey: ylabel,
+                "Accuracy": accuracy_score(y, y_pred),
+                "Precision": precision_score(y, y_pred),
+                "Recall": recall_score(y, y_pred),
+                "F1 Score": f1_score(y, y_pred),
+                "F2 Score": fbeta_score(y, y_pred, beta=2),
+                "AUC": roc_auc_score(y, y_pred_proba),
+                "AUC_CI": f"{roc_auc_score(y, y_pred_proba):.3f} ({lower:.3f}-{upper:.3f})",
+            }
+        )
+        roc_fig = RocCurveDisplay.from_predictions(
+            y, y_pred_proba, ax=ax[0], linewidth=linewidth, name=ylabel
+        )
+
+        p, r, _ = precision_recall_curve(y, y_pred_proba)
+        if news_prcurve_fix:
+            p, r = np.delete(p, -2), np.delete(r, -2)
+
+        pr_fig = PrecisionRecallDisplay(p, r, estimator_name=ylabel)
+        pr_fig.plot(ax=ax[1], linewidth=linewidth)
+
+    metrics = pd.DataFrame(metrics).set_index(modelkey)
+    display(metrics)
+
+    cm_fig = plot_confusion_matrix(y_true, y_pred, ax[2])
+    ax[1].legend(loc="upper right")
+
+    plt.suptitle(modelkey)
+
+    if save:
+        plt.savefig(save, bbox_inches="tight", dpi=100)
+
+
 def evaluate_from_pred(
     y_true,
     y_pred,
@@ -339,7 +547,7 @@ def evaluate_from_pred(
             "F1 Score": f1_score(y_true, y_pred, pos_label=pos_label),
             "F2 Score": fbeta_score(y_true, y_pred, beta=2, pos_label=pos_label),
             "AUC": roc_auc_score(y_true, y_pred_proba),
-            "AUC_CI": f"{lower:.3f}-{upper:.3f}",
+            "AUC_CI": f"{roc_auc_score(y_true, y_pred_proba):.3f} ({lower:.3f}-{upper:.3f})",
         },
         index=["Model"],
     )
@@ -351,7 +559,6 @@ def evaluate_from_pred(
     sns.set_style(style)
     fig, ax = plt.subplots(1, 3, figsize=(16, 5))
 
-    ax[2].grid(False)
     roc_fig = RocCurveDisplay.from_predictions(
         y_true, y_pred_proba, ax=ax[0],  # pos_label=pos_label
     )
@@ -363,17 +570,10 @@ def evaluate_from_pred(
         get = {1: True, -1: False}.get
         y_true, y_pred = (list(map(get, y_true)), list(map(get, y_pred)))
 
-    cm_fig = ConfusionMatrixDisplay(
-        np.rot90(np.flipud(confusion_matrix(y_true, y_pred, normalize="true"))),
-        display_labels=[1, 0],
-    ).plot(values_format=".2%", ax=ax[2])
-
-    ax[2].set_xlabel("True Class")
-    ax[2].set_ylabel("Predicted Class")
-
     # cm_fig = ConfusionMatrixDisplay.from_predictions(
     #     y_true, y_pred, ax=ax[1], normalize="true", values_format=".2%"
     # )
+    cm_fig = plot_confusion_matrix(y_true, y_pred, ax[2])
 
     plt.suptitle(plot_title)
 
@@ -384,7 +584,7 @@ def evaluate_from_pred(
 
 
 def evaluate(
-    model, X, y, plot_title=None, save=None, style="darkgrid", n_resamples=9999
+    model, X, y, plot_title=None, save=None, style="darkgrid", n_resamples=9999,
 ):
     y_pred = model.predict(X)
     try:
