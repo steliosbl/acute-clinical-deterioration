@@ -210,12 +210,12 @@ class LgbmObjective:
             "LGBM__boosting_type": "gbdt",
             "LGBM__is_unbalance": True,
             "LGBM__n_jobs": 1,
-            "LGBM__categorical_feature": self.categorical_cols_idx,
+            #   "LGBM__categorical_feature": self.categorical_cols_idx,
             "LGBM__lambda_l1": trial.suggest_float(
-                "LGBM__lambda_l1", 1e-8, 10.0, log=True
+                "LGBM__lambda_l1", 1e-4, 10.0, log=True
             ),
             "LGBM__lambda_l2": trial.suggest_float(
-                "LGBM__lambda_l2", 1e-8, 10.0, log=True
+                "LGBM__lambda_l2", 1e-4, 10.0, log=True
             ),
             "LGBM__num_leaves": trial.suggest_int("LGBM__num_leaves", 2, 256),
             "LGBM__feature_fraction": trial.suggest_float(
@@ -226,10 +226,10 @@ class LgbmObjective:
             ),
             "LGBM__bagging_freq": trial.suggest_int("LGBM__bagging_freq", 1, 7),
             "LGBM__min_child_samples": trial.suggest_int(
-                "LGBM__min_child_samples", 5, 100
+                "LGBM__min_child_samples", 5, 150
             ),
             "IMB__sampling_strategy": trial.suggest_float(
-                "IMB__sampling_strategy", 0.1, 0.5
+                "IMB__sampling_strategy", 0.05, 0.5
             ),
         }
 
@@ -244,7 +244,7 @@ class LgbmObjective:
                 self.y_train,
                 cv=5,
                 scoring="roc_auc",
-                fit_params={"LGBM__categorical_feature": self.categorical_cols_idx},
+                #  fit_params={"LGBM__categorical_feature": self.categorical_cols_idx},
             )
         return cv["test_score"].mean()
 
@@ -383,23 +383,18 @@ class LogisticObjective:
         self.X_train, self.y_train = X_train, y_train
 
     def __call__(self, trial):
-        param = {"LR__max_iter": 10000}
-        param["LR__penalty"] = trial.suggest_categorical("LR__penalty", ["l2", "l1"])
-        if param["LR__penalty"] == "l1":
-            param["LR__solver"] = "saga"
+        param = {"max_iter": 1000}
+        param["penalty"] = trial.suggest_categorical("penalty", ["l2", "l1"])
+        if param["penalty"] == "l1":
+            param["solver"] = "saga"
         else:
-            param["LR__solver"] = "lbfgs"
-        param["LR__C"] = trial.suggest_float("LR__C", 0.01, 10)
-        param["LR__class_weight"] = trial.suggest_categorical(
-            "LR__class_weight", [None, "balanced"]
-        )
-        param["IMB__sampling_strategy"] = trial.suggest_float(
-            "IMB__sampling_strategy", 0.1, 0.5
+            param["solver"] = "lbfgs"
+        param["C"] = trial.suggest_float("C", 0.01, 10)
+        param["class_weight"] = trial.suggest_categorical(
+            "class_weight", [None, "balanced"]
         )
 
-        model = ImbPipeline(
-            steps=[("IMB", RandomUnderSampler()), ("LR", LogisticRegression()),]
-        ).set_params(**param)
+        model = LogisticRegression().set_params(**param)
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")

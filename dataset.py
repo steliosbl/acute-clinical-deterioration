@@ -904,7 +904,7 @@ class SCIData(pd.DataFrame):
         return r.xy()
 
     def categorize(self):
-        r = self.copy()
+        r = self.copy().apply(lambda x: x.replace({True: 1.0, False: 0.0}))
 
         mask = r.select_dtypes(include=object)
         r[mask.columns] = r.select_dtypes(include=object).astype("category")
@@ -917,6 +917,12 @@ class SCIData(pd.DataFrame):
         r[mask.columns] = mask.apply(lambda x: x.cat.codes)
 
         return SCIData(r)
+
+    def onehot_encode_categories(self):
+        r = self
+        for col in self.select_dtypes(include="category").columns:
+            r = r.encode_onehot([col], prefix=col.replace("Description", ""))
+        return r
 
     def describe_categories(self):
         categorical_cols = [
@@ -946,6 +952,7 @@ class SCIData(pd.DataFrame):
         dropna=False,
         fillna=False,
         ordinal_encoding=False,
+        onehot_encoding=False,
         outcome="DiedDuringStay",
     ):
         X = (
@@ -972,6 +979,8 @@ class SCIData(pd.DataFrame):
 
         if ordinal_encoding:
             X = SCIData(X).ordinal_encode_categories()
+        elif onehot_encoding:
+            X = SCIData(X).onehot_encode_categories()
 
         return SCIData(X), y
 

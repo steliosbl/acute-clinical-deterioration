@@ -31,6 +31,7 @@ from sklearn.metrics import (
     RocCurveDisplay,
     PrecisionRecallDisplay,
 )
+from sklearn.calibration import CalibrationDisplay
 from sklearn.dummy import DummyClassifier
 
 from imblearn.pipeline import Pipeline as ImbPipeline
@@ -119,7 +120,7 @@ def plot_alert_rate(y_pred_probas, y_test, n_days, intercept=None, ax=None, save
             ax.annotate(
                 text=round(intersection[0], 3),
                 xy=intersection,
-                xytext=(1 - 0.03, intersection[1] - 0.4),
+                xytext=(min(1 - 0.015, intersection[0] + 0.025), intersection[1] - 0.4),
             )
 
     sns.lineplot(
@@ -396,7 +397,7 @@ def evaluate_multiple(
     sns.set_style("white")
     sns.set_palette("tab10")
     plt.rc("axes", titlesize=16)
-    fig, ax = plt.subplots(1, 2, figsize=(14, 6))
+    fig, ax = plt.subplots(1, 3, figsize=(22, 6))
     metrics = []
     for idx, (modelkey, (y_pred, y_pred_proba)) in enumerate(y_preds.items()):
         linestyle = "--" if modelkey == news_modelkey else "-"
@@ -437,6 +438,18 @@ def evaluate_multiple(
             color=color,
             ax=ax[1],
         )
+        try:
+            cal_fig = CalibrationDisplay.from_predictions(
+                y_true,
+                y_pred_proba,
+                ax=ax[2],
+                linewidth=linewidth,
+                name=modelkey,
+                color=color,
+                linestyle=linestyle,
+            )
+        except ValueError:
+            pass
         # roc_fig = RocCurveDisplay.from_predictions(
         #     y_true,
         #     y_pred_proba,
@@ -460,6 +473,7 @@ def evaluate_multiple(
     ax[0].set_title("Receiver Operating Characteristic (ROC)")
     ax[1].set_title("Precision-Recall")
     ax[1].legend(loc="upper right")
+    ax[2].set_title("Calibration")
 
     metrics = pd.DataFrame(metrics).set_index("Model")
     display(metrics)
@@ -516,10 +530,17 @@ def evaluate_all_outcomes(
         pr_fig = PrecisionRecallDisplay(p, r, estimator_name=ylabel)
         pr_fig.plot(ax=ax[1], linewidth=linewidth)
 
+        try:
+            cal_fig = CalibrationDisplay.from_predictions(
+                y, y_pred_proba, ax=ax[2], linewidth=linewidth, name=ylabel
+            )
+        except ValueError:
+            pass
+
     metrics = pd.DataFrame(metrics).set_index(modelkey)
     display(metrics)
 
-    cm_fig = plot_confusion_matrix(y_true, y_pred, ax[2])
+    # cm_fig = plot_confusion_matrix(y_true, y_pred, ax[2])
     ax[1].legend(loc="upper right")
 
     plt.suptitle(modelkey)

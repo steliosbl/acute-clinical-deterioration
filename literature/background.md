@@ -4,10 +4,13 @@
  - The first commercial AI system using EHR data to receive clearance for widespread clinical use by the FDA was WAVE [Parikh19]. 
  - Standard outcomes EWSs are used to track are mortality and ICU admission [Gerry20, pp. 1], while prior literature has used used ML to stratify patients according to their risk of mortality, admission to hospital or to the ICU, acute morbidity and infectious diseases, expected resource use, etc [Fernandes20]. 
  - Historically paper-based points-based EWS make the assumption that each vital sign considered has the same predictive value [per Churpek12, from Gerry20, pp. 10].
- - ML can learn from and make predictions on data without needing to be explicitly programmed. 
+ - ML can learn from and make predictions on data without needing to be explicitly programmed and can account for high-dimensional data with lots of predictors and manage problems where the signal-to-noise ratio is very high [Obermeyer16, Christodoulou19]. 
+ - Rules-based systems that have been developed in the past fall short of incorporating the full breadth and variety of information involved in the prognostic process [Challen19]. 
+ - ML for prognostic modelling has been identified as one of the key application areas of AI in healthcare, alongisde assisting diagnostic imaging [Obermeyer16]. 
  
 ## Electronic records and EWS
  - EWSs have historically been designed for paper charts, and were often expected to be calculated by hand. This includes the points-based NEWS [RCP17]. However, they are increasingly being integrated into EHR systems [Gerry20, pp. 1]. 
+ - Indeed, prognostic models that draw data directly from EHR and overcome the limitations of paper-based is a popular, widely discussed and researched line of work [Obermeyer16]. 
  - The NEWS was designed for paper charts and calculation by hand. The latest revision only considers gradual replacement of paper-based observation charts with electronic data systems in some hospitals [RCP17, pp. 33-35].
 
 ## NEWS
@@ -98,6 +101,23 @@ Task-specific factors dictate the interpretability technique used, and the type 
 
  - Breakdown into mortality and critical care: Death constitutes a competing risk when predicting ICU admission only [Wolbers09].
 
+ - We don't account for group inequalities. 
+   - Social Determnants of Health (e.g. community context, economic stability, education, healthcare access have been found to be strong predictors of clinical risk)[Mahmoudi20, pp. 4]. 
+   - Despite significant links between social factors and risk, health systems still do not systematically collect this data [Mahmoudi20, pp. 6-7].
+   - We exclude any analysis of this dimension of the problem out of necessity, as our data does not include any protected characteristics. Fair ML literature recommends using probabilistic modelling techniques and proxy variables for protected group membership [Chen19]. However, we do not have sufficient information for this either, and our only candidate proxy variable (geolocation, as given by postcode) is too coarse to use in such a model (first 3 characters only).
+      - Several studies use Census block- or zip-level aggregate data as a routinely available proxy, but these are often too coarse to be useful.
+   - It is widely accepted in the machine learning fairness literature that excluding protected characteristics from a modelling task will not result in a fair predictive model as group disparities will be reflected in the remaining predictors [Kusner17]. 
+   - This is especially important if a system is used to autonomously screen or prioritise patients' access to care, as it risks perpetuating healthcare inequalities [per Yu19, from Challen19]
+
+ - Distributional shift, a mismatch between the distributions of the training data and the operational data once a system is put to use, is a known risk of ML systems and can occur when using the system in a new context (e.g., a different care center) or it can materialise in the same context over time as circumstances evolve. 
+   - We used a temporal train-test split to examine whether distributional shift over time impacts our model in the short-term (2-3 years) and found them to remain robust. 
+   - Further, our own experimental setup induces an intentional shift due to our resampling to overcome the data's class imbalance [Storkey09]. As such, our testing set, on which all our validation results are produced, is not resampled in any way and reflects the true prevalence of critical events at the Salford ED in 2019-2022.  
+   - Prior proposals have shown some capability of adaptation to new contexts through transfer learning [Mao18]. External validation using data from other hospitals is required to make any statements on that. 
+   - A plan for monitoring and maintaining the system over time to adjust for prediction drift is required [Challen19]. 
+
+ - Breaking changes in clinical practice
+   - Can the system adapt to sudden changes in practice, workflow or policy? [Challen19]. I'd say no. 
+
 ## Justification for a more dynamic EWS than the NEWS
  - The simplicity of the NEWS permits (and is intended to act as) a one-size-fits-all approach. However, "The population is remarkably diverse, and its many dimensions, alone or in combination, may help delinate subpopulations that have different risks for various health-related outcomes" [Lezzoni13, pp.19]. 
 
@@ -115,15 +135,11 @@ evidence.
  - Sex:
     - Males and females differ physiologically and anatomically, and their level of risk differs depending on condition and age. In past modelling attempts, sex has been only modestly predictive of short-term clinical risk, and many models, including the NEWS, exclude it entirely. 
         - At the same time, differing socioeconomic circumstances between men and women can influence the incidence of diseases and their reaction to treatments, as well as the treatment individauls face within the healthcare system [Geensway01].
-        - This distinction becomes even more complex when considering gender identity rather than chromosomal sex.  
+        - We don't even consider pregnancy, a very important confounding factor [Chen21]. 
+        - This distinction becomes even more complex when considering gender identity rather than chromosomal sex [Chen21].  
  - Diagnoses:
     - In some cases, finding and recording an accurate diagnosis may be infeasible or even impossible in the ED context, which carries time constraints and operational pressures. Acutely managing patients who may be in critical condition takes priority over providing precise diagnoses. 
         - In such cases, the "diagnosis" on-record is often a statement of symptoms indicating underlying disease, rather than definitively identifying the disease itself. 
         - When developing a predictive model for clinical use, it may not be necessary to have definitive diagnoses for each patient as, even if helpful for the model's validity, it is not reflective of the realities of clinical practice [Lezzoni13, pp. 50].
         - Prior studies have used routinely collected administrative data as predictors of mortality risk with some success [Aylin07]. 
     - Patients' comorbidities were not included in the NEWS as it was intended to be a generic EWS, and replace specialised, disease-specific risk scores. For rapidly assessing patients, it was anticipated to reflect the physiological perturbations they cause regardless [RCP17, pp.19]. 
- - Social Determinants of Health (SDH):
-    - E.g. community context, economic stability, education, healthcare access have been found to be strong predictors of readmission [Mahmoudi20, pp. 4]. 
-    - Despite significant links between social factors and risk, health systems still do not systematically collect this data [Mahmoudi20, pp. 6-7].
-    - Several studies use Census block- or zip-level aggregate data as a routinely available proxy, but these are often too coarse to be useful.
-    - NLP on clinician's notes has shown promise.
