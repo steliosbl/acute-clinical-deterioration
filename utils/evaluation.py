@@ -97,20 +97,25 @@ def find_earliest_intersection(x1, y1, x2, y2, after=0.7):
     )
 
 
-def plot_alert_rate(y_pred_probas, y_test, n_days, intercept=None, ax=None, save=None):
-    sns.set_style("white")
-    plt.rc("axes", titlesize=16)
-    if ax is None:
+def plot_alert_rate(y_true, y_preds, n_days, baseline_key=None, ax=None, save=None):
+    no_ax = ax is None
+    if no_ax:
+        sns.set_style("white")
+        plt.rc("axes", titlesize=16)
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
+    if type(list(y_preds.values())[0]) == tuple:
+        y_preds = {key: value[1] for key, value in y_preds.items()}
+
     x_intercept, y_intercept = alert_rate_curve(
-        y_test, y_pred_probas[intercept], n_days, sample=None
+        y_true, y_preds[baseline_key], n_days, sample=None
     )
-    for idx, (model, y_pred_proba) in enumerate(y_pred_probas.items()):
-        if model == intercept:
+
+    for idx, (model, y_pred_proba) in enumerate(y_preds.items()):
+        if model == baseline_key:
             continue
 
-        x, y = alert_rate_curve(y_test, y_pred_proba, n_days, sample=100)
+        x, y = alert_rate_curve(y_true, y_pred_proba, n_days, sample=100)
         intersection = find_earliest_intersection(x_intercept, y_intercept, x, y)
         sns.lineplot(
             x=x, y=y, label=model, linewidth=2, ax=ax, color=sns.color_palette()[idx]
@@ -120,13 +125,13 @@ def plot_alert_rate(y_pred_probas, y_test, n_days, intercept=None, ax=None, save
             ax.annotate(
                 text=round(intersection[0], 3),
                 xy=intersection,
-                xytext=(min(1 - 0.015, intersection[0] + 0.025), intersection[1] - 0.4),
+                xytext=(min(1 - 0.015, intersection[0] + 0.035), intersection[1] - 0.4),
             )
 
     sns.lineplot(
         x=x_intercept,
         y=y_intercept,
-        label=intercept,
+        label=baseline_key,
         linestyle="--",
         linewidth=2,
         ax=ax,
@@ -134,9 +139,164 @@ def plot_alert_rate(y_pred_probas, y_test, n_days, intercept=None, ax=None, save
     )
 
     ax.set_title("Sensitivity vs. Alert Rate")
+    ax.set_xlabel("Sensitivity")
+    ax.set_ylabel("Mean alerts per day")
     if save:
         plt.savefig(save, bbox_inches="tight")
-    plt.rc("axes", titlesize=12)
+
+    if no_ax:
+        plt.rc("axes", titlesize=12)
+
+
+def plot_calibrated_regression_coefficients(
+    model, columns, topn=60, figsize=(8, 12), save=None
+):
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    df = pd.DataFrame(
+        zip(
+            np.array(
+                [_.base_estimator.coef_[0] for _ in model.calibrated_classifiers_]
+            ).mean(axis=0),
+            columns,
+        ),
+        columns=["Coefficient", "Feature"],
+    )
+    df = df.loc[
+        df.Coefficient.apply(abs).sort_values(ascending=False).head(topn).index
+    ].sort_values("Coefficient", ascending=False)
+    sns.barplot(
+        data=df,
+        x="Coefficient",
+        y="Feature",
+        palette=(df.Coefficient > 0).map({True: "r", False: "b"}),
+        ax=ax,
+    )
+
+    if save:
+        plt.savefig(save, bbox_inches="tight")
+
+
+def plot_roc_curves(
+    y_true, y_preds, baseline_key=None, linewidth=2, save=None, ax=None, smoothing=True
+):
+    no_ax = ax is None
+    if no_ax:
+        sns.set_style("white")
+        plt.rc("axes", titlesize=16)
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+
+    if type(list(y_preds.values())[0]) == tuple:
+        y_preds = {key: value[1] for key, value in y_preds.items()}
+
+    for idx, (modelkey, y_pred_proba) in enumerate(y_preds.items()):
+        linestyle = "--" if modelkey == baseline_key else "-"
+        color = "tomato" if modelkey == baseline_key else sns.color_palette()[idx]
+        if smoothing:
+            fpr, tpr, _ = roc_curve(y_true, y_pred_proba)
+            auc = roc_auc_score(y_true, y_pred_proba)
+            sns.lineplot(
+                x=fpr,
+                y=tpr,
+                label=f"{modelkey} (AUC = {auc:.2f})",
+                linewidth=linewidth,
+                linestyle=linestyle,
+                color=color,
+                ax=ax,
+            )
+        else:
+            RocCurveDisplay.from_predictions(
+                y_true,
+                y_pred_proba,
+                ax=ax,
+                linewidth=linewidth,
+                name=modelkey,
+                linestyle=linestyle,
+                color=color,
+            )
+
+    ax.set_title("Receiver Operating Characteristic (ROC)")
+    ax.set_xlabel("1-Specificity")
+    ax.set_ylabel("Sensitivity")
+    if save:
+        plt.savefig(save, bbox_inches="tight")
+
+    if no_ax:
+        plt.rc("axes", titlesize=12)
+
+
+def plot_pr_curves(
+    y_true, y_preds, baseline_key=None, linewidth=2, save=None, ax=None, smoothing=True
+):
+    no_ax = ax is None
+    if no_ax:
+        sns.set_style("white")
+        plt.rc("axes", titlesize=16)
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+
+    if type(list(y_preds.values())[0]) == tuple:
+        y_preds = {key: value[1] for key, value in y_preds.items()}
+
+    for idx, (modelkey, y_pred_proba) in enumerate(y_preds.items()):
+        linestyle = "--" if modelkey == baseline_key else "-"
+        color = "tomato" if modelkey == baseline_key else sns.color_palette()[idx]
+        if smoothing:
+            precision, recall, _ = precision_recall_curve(y_true, y_pred_proba)
+            ap = average_precision_score(y_true, y_pred_proba)
+            sns.lineplot(
+                x=recall,
+                y=precision,
+                label=f"{modelkey} (AP = {ap:.2f})",
+                linewidth=linewidth,
+                linestyle=linestyle,
+                color=color,
+                ax=ax,
+            )
+        else:
+            pr_fig = PrecisionRecallDisplay.from_predictions(
+                y_true,
+                y_pred_proba,
+                name=modelkey,
+                linestyle=linestyle,
+                ax=ax,
+                linewidth=linewidth,
+                color=color,
+            )
+
+    ax.legend(loc="upper right")
+    ax.set_title("Precision-Recall")
+    ax.set_xlabel("Sensitivity (a.k.a. Recall)")
+    ax.set_ylabel("Positive predictive value (a.k.a. Precision)")
+    if save:
+        plt.savefig(save, bbox_inches="tight")
+
+    if no_ax:
+        plt.rc("axes", titlesize=12)
+
+
+def plot_calibration_curves(y_true, y_preds, linewidth=2, save=None, ax=None):
+    no_ax = ax is None
+    if no_ax:
+        sns.set_style("white")
+        plt.rc("axes", titlesize=16)
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+
+    if type(list(y_preds.values())[0]) == tuple:
+        y_preds = {key: value[1] for key, value in y_preds.items()}
+
+    for modelkey, y_pred_proba in y_preds.items():
+        try:
+            CalibrationDisplay.from_predictions(
+                y_true, y_pred_proba, ax=ax, linewidth=linewidth, name=modelkey,
+            )
+        except ValueError:
+            pass
+
+    ax.set_title("Calibration")
+    if save:
+        plt.savefig(save, bbox_inches="tight")
+
+    if no_ax:
+        plt.rc("axes", titlesize=12)
 
 
 def roc_auc_ci(y_true, y_score):
@@ -391,17 +551,9 @@ def plot_confusion_matrix(y_true, y_pred, ax=None, save=None, plot_title=None):
     return cm_fig
 
 
-def evaluate_multiple(
-    y_true, y_preds, n_resamples=99, news_modelkey=None, linewidth=2, save=None,
-):
-    sns.set_style("white")
-    sns.set_palette("tab10")
-    plt.rc("axes", titlesize=16)
-    fig, ax = plt.subplots(1, 3, figsize=(22, 6))
+def get_metrics_table(y_true, y_preds, n_resamples=99):
     metrics = []
-    for idx, (modelkey, (y_pred, y_pred_proba)) in enumerate(y_preds.items()):
-        linestyle = "--" if modelkey == news_modelkey else "-"
-        color = "tomato" if modelkey == news_modelkey else sns.color_palette()[idx]
+    for modelkey, (y_pred, y_pred_proba) in y_preds.items():
         lower, upper = roc_auc_ci_bootstrap(y_true, y_pred_proba, n_resamples)
         auc = roc_auc_score(y_true, y_pred_proba)
         metrics.append(
@@ -416,66 +568,47 @@ def evaluate_multiple(
                 "AUC_CI": f"{auc:.3f} ({lower:.3f}-{upper:.3f})",
             }
         )
-        fpr, tpr, _ = roc_curve(y_true, y_pred_proba)
-        precision, recall, _ = precision_recall_curve(y_true, y_pred_proba)
-        ap = average_precision_score(y_true, y_pred_proba)
 
-        sns.lineplot(
-            x=fpr,
-            y=tpr,
-            label=f"{modelkey} (AUC = {auc:.2f})",
-            linewidth=linewidth,
-            linestyle=linestyle,
-            color=color,
-            ax=ax[0],
-        )
-        sns.lineplot(
-            x=recall,
-            y=precision,
-            label=f"{modelkey} (AP = {ap:.2f})",
-            linewidth=linewidth,
-            linestyle=linestyle,
-            color=color,
-            ax=ax[1],
-        )
-        try:
-            cal_fig = CalibrationDisplay.from_predictions(
-                y_true,
-                y_pred_proba,
-                ax=ax[2],
-                linewidth=linewidth,
-                name=modelkey,
-                color=color,
-                linestyle=linestyle,
-            )
-        except ValueError:
-            pass
-        # roc_fig = RocCurveDisplay.from_predictions(
-        #     y_true,
-        #     y_pred_proba,
-        #     ax=ax[0],
-        #     linewidth=linewidth,
-        #     name=modelkey,
-        #     linestyle=linestyle,
-        #     color=color,
-        # )
+    return pd.DataFrame(metrics).set_index("Model")
 
-        # pr_fig = PrecisionRecallDisplay.from_predictions(
-        #     y_true,
-        #     y_pred_proba,
-        #     name=modelkey,
-        #     linestyle=linestyle,
-        #     ax=ax[1],
-        #     linewidth=linewidth,
-        #     color=color,
-        # )
 
-    ax[0].set_title("Receiver Operating Characteristic (ROC)")
-    ax[1].set_title("Precision-Recall")
-    ax[1].legend(loc="upper right")
-    ax[2].set_title("Calibration")
+def evaluate_multiple(
+    y_true,
+    y_preds,
+    alert_rate_n_days,
+    n_resamples=99,
+    news_modelkey="Baseline (NEWS)",
+    linewidth=2,
+    save=None,
+):
+    metrics = get_metrics_table(y_true, y_preds, n_resamples=n_resamples)
 
-    metrics = pd.DataFrame(metrics).set_index("Model")
+    sns.set_style("white")
+    sns.set_palette("tab10")
+    plt.rc("axes", titlesize=16)
+    fig, ax = plt.subplots(2, 2, figsize=(14, 14))
+
+    plot_roc_curves(
+        y_true,
+        y_preds,
+        baseline_key=news_modelkey,
+        ax=ax[0][0],
+        linewidth=linewidth,
+        smoothing=True,
+    )
+    plot_pr_curves(
+        y_true,
+        y_preds,
+        baseline_key=news_modelkey,
+        ax=ax[0][1],
+        linewidth=linewidth,
+        smoothing=True,
+    )
+    plot_calibration_curves(y_true, y_preds, ax=ax[1][0], linewidth=linewidth)
+    plot_alert_rate(
+        y_true, y_preds, alert_rate_n_days, ax=ax[1][1], baseline_key=news_modelkey
+    )
+
     display(metrics)
 
     if save:

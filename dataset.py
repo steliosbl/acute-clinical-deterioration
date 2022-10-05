@@ -111,11 +111,11 @@ class SCIData(pd.DataFrame):
         r[perfect.columns] = perfect
 
         if onehot:
-            r = r.encode_ccs_onehot()
+            r = r.encode_ccs_onehot(prefix="CCS")
 
         return SCIData(r)
 
-    def _regroup_ccs(self, df, col, onehot=False):
+    def _regroup_ccs(self, df, col, onehot=False, prefix="HSMR"):
         """Joins SCI and a given grouping table for CCS. Matches ICD-10 diagnoses with CCS if this has not already been done
         :param df: The CCS grouping table (SHMI or HSMR)
         :param col: The column from the matching table to keep
@@ -129,7 +129,7 @@ class SCIData(pd.DataFrame):
         r[cols] = joined
 
         if onehot:
-            r = r.encode_ccs_onehot()
+            r = r.encode_ccs_onehot(prefix=prefix)
 
         return SCIData(r)
 
@@ -143,7 +143,7 @@ class SCIData(pd.DataFrame):
         if shmi is None:
             shmi = pd.read_hdf(infile, "shmi")
 
-        return self._regroup_ccs(shmi, "SHMIGroup", onehot=onehot)
+        return self._regroup_ccs(shmi, "SHMIGroup", onehot=onehot, prefix="SHMI")
 
     def augment_hsmr(self, infile="data/ccs.h5", hsmr=None, onehot=False):
         """Joins SCI and the HSMR matching table
@@ -154,7 +154,7 @@ class SCIData(pd.DataFrame):
         if hsmr is None:
             hsmr = pd.read_hdf(infile, "hsmr")
 
-        return self._regroup_ccs(hsmr, "AggregateGroup", onehot=onehot)
+        return self._regroup_ccs(hsmr, "AggregateGroup", onehot=onehot, prefix="HSMR")
 
     def augment_icd10(
         self, infile="data/icd10.h5", icd10=None, keep=None, onehot=False, drop_old=True
@@ -403,6 +403,18 @@ class SCIData(pd.DataFrame):
         r.loc[mask, col] = "NHF"
 
         mask = ~(r[col].isin(r[col].value_counts().head(16).index)) & r[col].notna()
+        r.loc[mask, col] = "Other"
+
+        mask = (
+            r[col].notna()
+            & (r[col] != "A - Air")
+            & ~r["Assisted_breathing"].astype(bool)
+        )
+        r.loc[mask, "Assisted_breathing"] = True
+
+        mask = r["Assisted_breathing"].astype(bool) & (
+            (r[col] == "A - Air") | r[col].isna()
+        )
         r.loc[mask, col] = "Other"
 
         return SCIData(r)
