@@ -40,7 +40,9 @@ from imblearn.over_sampling import SMOTE, SMOTENC
 
 from pytorch_tabnet.metrics import Metric as TabNetMetric
 
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point
+
+import shap
 
 
 f2_score = make_scorer(fbeta_score, beta=2)
@@ -86,7 +88,7 @@ def find_earliest_intersection(x1, y1, x2, y2, after=0.7):
         LineString(np.column_stack((x2, y2)))
     )
 
-    if type(intersection) != LineString:
+    if type(intersection) not in [LineString, Point]:
         intersection = LineString(intersection.geoms)
 
     if not intersection.xy[0]:
@@ -101,8 +103,8 @@ def plot_alert_rate(y_true, y_preds, n_days, baseline_key=None, ax=None, save=No
     no_ax = ax is None
     if no_ax:
         sns.set_style("white")
-        plt.rc("axes", titlesize=16)
-        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        plt.rc("axes", titlesize=14)
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 
     if type(list(y_preds.values())[0]) == tuple:
         y_preds = {key: value[1] for key, value in y_preds.items()}
@@ -118,20 +120,25 @@ def plot_alert_rate(y_true, y_preds, n_days, baseline_key=None, ax=None, save=No
         x, y = alert_rate_curve(y_true, y_pred_proba, n_days, sample=100)
         intersection = find_earliest_intersection(x_intercept, y_intercept, x, y)
         sns.lineplot(
-            x=x, y=y, label=model, linewidth=2, ax=ax, color=sns.color_palette()[idx]
+            x=x,
+            y=y,
+            label=model.replace(" (tuned)", ""),
+            linewidth=2,
+            ax=ax,
+            color=sns.color_palette()[idx],
         )
         if intersection:
             ax.plot(*intersection, marker="x", color="black")
             ax.annotate(
                 text=round(intersection[0], 3),
                 xy=intersection,
-                xytext=(min(1 - 0.015, intersection[0] + 0.035), intersection[1] - 0.4),
+                xytext=(min(1 - 0.015, intersection[0] + 0.045), intersection[1] - 0.4),
             )
 
     sns.lineplot(
         x=x_intercept,
         y=y_intercept,
-        label=baseline_key,
+        label=baseline_key.replace(" (tuned)", ""),
         linestyle="--",
         linewidth=2,
         ax=ax,
@@ -141,8 +148,9 @@ def plot_alert_rate(y_true, y_preds, n_days, baseline_key=None, ax=None, save=No
     ax.set_title("Sensitivity vs. Alert Rate")
     ax.set_xlabel("Sensitivity")
     ax.set_ylabel("Mean alerts per day")
+    ax.set_xlim(0, 1.08)
     if save:
-        plt.savefig(save, bbox_inches="tight")
+        plt.savefig(save, bbox_inches="tight", dpi=200)
 
     if no_ax:
         plt.rc("axes", titlesize=12)
@@ -173,7 +181,7 @@ def plot_calibrated_regression_coefficients(
     )
 
     if save:
-        plt.savefig(save, bbox_inches="tight")
+        plt.savefig(save, bbox_inches="tight", dpi=200)
 
 
 def plot_roc_curves(
@@ -182,8 +190,8 @@ def plot_roc_curves(
     no_ax = ax is None
     if no_ax:
         sns.set_style("white")
-        plt.rc("axes", titlesize=16)
-        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        plt.rc("axes", titlesize=14)
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 
     if type(list(y_preds.values())[0]) == tuple:
         y_preds = {key: value[1] for key, value in y_preds.items()}
@@ -197,7 +205,7 @@ def plot_roc_curves(
             sns.lineplot(
                 x=fpr,
                 y=tpr,
-                label=f"{modelkey} (AUC = {auc:.2f})",
+                label=f"{modelkey.replace(' (tuned)', '')} (AUC = {auc:.2f})",
                 linewidth=linewidth,
                 linestyle=linestyle,
                 color=color,
@@ -209,7 +217,7 @@ def plot_roc_curves(
                 y_pred_proba,
                 ax=ax,
                 linewidth=linewidth,
-                name=modelkey,
+                name=modelkey.replace(" (tuned)", ""),
                 linestyle=linestyle,
                 color=color,
             )
@@ -218,7 +226,7 @@ def plot_roc_curves(
     ax.set_xlabel("1-Specificity")
     ax.set_ylabel("Sensitivity")
     if save:
-        plt.savefig(save, bbox_inches="tight")
+        plt.savefig(save, bbox_inches="tight", dpi=200)
 
     if no_ax:
         plt.rc("axes", titlesize=12)
@@ -230,8 +238,8 @@ def plot_pr_curves(
     no_ax = ax is None
     if no_ax:
         sns.set_style("white")
-        plt.rc("axes", titlesize=16)
-        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        plt.rc("axes", titlesize=14)
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 
     if type(list(y_preds.values())[0]) == tuple:
         y_preds = {key: value[1] for key, value in y_preds.items()}
@@ -245,7 +253,7 @@ def plot_pr_curves(
             sns.lineplot(
                 x=recall,
                 y=precision,
-                label=f"{modelkey} (AP = {ap:.2f})",
+                label=f'{modelkey.replace(" (tuned)", "")} (AP = {ap:.2f})',
                 linewidth=linewidth,
                 linestyle=linestyle,
                 color=color,
@@ -255,7 +263,7 @@ def plot_pr_curves(
             pr_fig = PrecisionRecallDisplay.from_predictions(
                 y_true,
                 y_pred_proba,
-                name=modelkey,
+                name=modelkey.replace(" (tuned)", ""),
                 linestyle=linestyle,
                 ax=ax,
                 linewidth=linewidth,
@@ -267,7 +275,7 @@ def plot_pr_curves(
     ax.set_xlabel("Sensitivity (a.k.a. Recall)")
     ax.set_ylabel("Positive predictive value (a.k.a. Precision)")
     if save:
-        plt.savefig(save, bbox_inches="tight")
+        plt.savefig(save, bbox_inches="tight", dpi=200)
 
     if no_ax:
         plt.rc("axes", titlesize=12)
@@ -277,8 +285,8 @@ def plot_calibration_curves(y_true, y_preds, linewidth=2, save=None, ax=None):
     no_ax = ax is None
     if no_ax:
         sns.set_style("white")
-        plt.rc("axes", titlesize=16)
-        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        plt.rc("axes", titlesize=14)
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 
     if type(list(y_preds.values())[0]) == tuple:
         y_preds = {key: value[1] for key, value in y_preds.items()}
@@ -286,14 +294,18 @@ def plot_calibration_curves(y_true, y_preds, linewidth=2, save=None, ax=None):
     for modelkey, y_pred_proba in y_preds.items():
         try:
             CalibrationDisplay.from_predictions(
-                y_true, y_pred_proba, ax=ax, linewidth=linewidth, name=modelkey,
+                y_true,
+                y_pred_proba,
+                ax=ax,
+                linewidth=linewidth,
+                name=modelkey.replace(" (tuned)", ""),
             )
         except ValueError:
             pass
 
     ax.set_title("Calibration")
     if save:
-        plt.savefig(save, bbox_inches="tight")
+        plt.savefig(save, bbox_inches="tight", dpi=200)
 
     if no_ax:
         plt.rc("axes", titlesize=12)
@@ -531,9 +543,67 @@ def with_sampling_strategies(clf, clf_name="Classifier", categorical_cols_idx=[]
     }
 
 
+def plot_shap_features_joint(
+    shap_values,
+    modelkey,
+    max_display=20,
+    figsize=(16, 8),
+    bar_aspect=0.045,
+    wspace=-0.3,
+    topadjust=0.93,
+    save=None,
+):
+    fig = plt.figure(figsize=figsize)
+
+    ax1 = fig.add_subplot(122, aspect="auto")
+    shap.summary_plot(shap_values, max_display=max_display, show=False, plot_size=None)
+    ax1.set_yticklabels([])
+
+    ax2 = fig.add_subplot(121, aspect=bar_aspect)
+    shap.summary_plot(
+        shap_values,
+        plot_type="bar",
+        plot_size=None,
+        max_display=max_display,
+        show=False,
+        color="purple",
+    )
+    ax2.set_xlabel("Mean magnitude of SHAP value")
+
+    plt.tight_layout()
+    plt.subplots_adjust(wspace=wspace)
+    plt.suptitle(modelkey, fontsize=16)
+    plt.subplots_adjust(top=topadjust)
+    if save:
+        plt.savefig(save, bbox_inches="tight", dpi=200)
+
+
+def confusion_matrix_multiplot(y_true, y_preds, save=None, plot_title=None):
+    fig, ax = plt.subplots(1, len(y_preds), figsize=(4 * len(y_preds), 4))
+
+    if type(list(y_preds.values())[0]) == tuple:
+        y_preds = {key: value[0] for key, value in y_preds.items()}
+
+    for idx, (modelkey, y_pred) in enumerate(y_preds.items()):
+        matrix = plot_confusion_matrix(y_true, y_pred, ax=ax[idx], plot_title=modelkey)
+        if idx > 0:
+            ax[idx].set_ylabel(None)
+        if idx < len(y_preds) - 1:
+            matrix.figure_.axes[-1].set_visible(False)
+
+    plt.subplots_adjust(wspace=0, hspace=0)
+
+    if save:
+        plt.savefig(save, bbox_inches="tight", dpi=200)
+
+    # return fig
+
+
 def plot_confusion_matrix(y_true, y_pred, ax=None, save=None, plot_title=None):
-    if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+    no_ax = ax is None
+    if no_ax:
+        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+        plt.rc("axes", titlesize=12)
 
     ax.grid(False)
     cm_fig = ConfusionMatrixDisplay(
@@ -547,6 +617,9 @@ def plot_confusion_matrix(y_true, y_pred, ax=None, save=None, plot_title=None):
 
     if save:
         plt.savefig(save, bbox_inches="tight", dpi=200)
+
+    if no_ax:
+        plt.rc("axes", titlesize=12)
 
     return cm_fig
 
@@ -675,6 +748,7 @@ def evaluate_all_outcomes(
 
     # cm_fig = plot_confusion_matrix(y_true, y_pred, ax[2])
     ax[1].legend(loc="upper right")
+    ax[2].legend(loc='upper left')
 
     plt.suptitle(modelkey)
 

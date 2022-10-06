@@ -48,11 +48,12 @@ class SCIData(pd.DataFrame):
         :return: New SCIData instance with the new features added
         """
         return (
-            self.derive_covid_strict()
-            # .derive_mortality()
+            self.clean_all()
+            .filter_vague_diagnoses()
             .derive_readmission()
-            # .derive_critical_care()
-            # .derive_news_risk()
+            .derive_sdec()
+            .omit_vbg()
+            .omit_ae()
         )
 
     def clean_all(self):
@@ -302,6 +303,18 @@ class SCIData(pd.DataFrame):
 
         return SCIData(r)
 
+    def derive_sdec(
+        self, sdec_wards=["AEC", "AAA"], col_name="AdmittedFromSDEC",
+    ):
+        """ Determines whether the patient originally was admitted to SDEC but then stayed
+        :param sdec_wards: The wards to search for. By default, ['AEC', 'AAA']
+        """
+        r = self.copy()
+        m = r[SCICols.wards].isin(sdec_wards)
+        r[col_name] = m.any(axis=1)
+
+        return SCIData(r)
+
     def derive_critical_care(
         self, critical_wards=["CCU", "HH1M"], within=1, col_name="CriticalCare",
     ):
@@ -315,20 +328,17 @@ class SCIData(pd.DataFrame):
             critical_wards
         )  # Can also consider OPCS: ['E85.1', 'X50.3', 'X50.4'] for on-ward critical care but there are very few
         column_where_critical_appeared = m.idxmax(axis=1).where(m.any(1)).dropna()
+        stacked_los = r[SCICols.ward_los].stack()
         los_on_critical_admission = (
-            r[SCICols.ward_los]
-            .stack()
-            .groupby(level=0)
-            .cumsum()
-            .loc[
-                list(
-                    zip(
-                        column_where_critical_appeared.index,
-                        column_where_critical_appeared + "LOS",
-                    )
+            stacked_los.groupby(level=0).cumsum() - stacked_los
+        ).loc[
+            list(
+                zip(
+                    column_where_critical_appeared.index,
+                    column_where_critical_appeared + "LOS",
                 )
-            ]
-        )
+            )
+        ]
         los_on_critical_admission.index = los_on_critical_admission.index.droplevel(1)
 
         # r["CriticalCare"] = m.any(axis=1)
@@ -396,7 +406,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def clean_breathing_device(self):
-        col = "Breathing_device"
+        col = "BreathingDevice"
         r = self.copy()
 
         mask = r[col].notna() & r[col].str.lower().str.startswith("other; nhf")
@@ -408,11 +418,11 @@ class SCIData(pd.DataFrame):
         mask = (
             r[col].notna()
             & (r[col] != "A - Air")
-            & ~r["Assisted_breathing"].astype(bool)
+            & ~r["AssistedBreathing"].astype(bool)
         )
-        r.loc[mask, "Assisted_breathing"] = True
+        r.loc[mask, "AssistedBreathing"] = True
 
-        mask = r["Assisted_breathing"].astype(bool) & (
+        mask = r["AssistedBreathing"].astype(bool) & (
             (r[col] == "A - Air") | r[col].isna()
         )
         r.loc[mask, col] = "Other"
@@ -423,8 +433,8 @@ class SCIData(pd.DataFrame):
         sat, score, assisted, device = (
             "O2_saturation",
             "NEWS_O2_sat_score",
-            "Assisted_breathing",
-            "Breathing_device",
+            "AssistedBreathing",
+            "BreathingDevice",
         )
         r = self.copy()
 
@@ -501,7 +511,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def clean_blood_pressure(self, outlier_threshold_std=3):
-        sys, dia, score = "BP_Systolic", "BP_Diastolic", "NEWS_BP_score"
+        sys, dia, score = "SystolicBP", "DiastolicBP", "NEWS_BP_score"
         r = self.copy()
 
         for col in [sys, dia]:
@@ -558,7 +568,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def clean_device_air(self):
-        score, value = "NEWS_device_air_score", "Assisted_breathing"
+        score, value = "NEWS_device_air_score", "AssistedBreathing"
         r = self.copy()
 
         # Some erroneous 1.0 values (impossible per the scale)
@@ -602,7 +612,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def clean_heart_rate(self):
-        score, value = "NEWS_heart_rate_score", "Heart_rate"
+        score, value = "NEWS_heart_rate_score", "HeartRate"
         r = self.copy()
 
         r.loc[r[value] < 0, value] *= 1
@@ -647,7 +657,7 @@ class SCIData(pd.DataFrame):
 
     def clean_O2_flow_rate(self):
         r = self.copy()
-        flow, device = "Oxygen_flow_rate", "Breathing_device"
+        flow, device = "Oxygen_flow_rate", "BreathingDevice"
         lpm_device_mask = r[device].isin(
             ["A - Air", "N - Nasal cannula", "SM - Simple mask"]
         )
@@ -751,20 +761,20 @@ class SCIData(pd.DataFrame):
         # BP is Systolic: 124 and Diastolic: 70
         # Temperature is 36.7
         # Heart rate is 80
-        for _ in SCICols.news_data_raw[:-2] + ["BP_Diastolic"]:
+        for _ in SCICols.news_data_raw[:-2] + ["DiastolicBP"]:
             if _ in r.columns:
                 r[_].fillna(r[_].median(), inplace=True)
 
         static_fills = {
             **{col: 0 for col in SCICols.news_data_scored},
-            "Assisted_breathing": False,
-            "Breathing_device": "A - Air",
+            "AssistedBreathing": False,
+            "BreathingDevice": "A - Air",
             "Oxygen_flow_rate": 0.0,
             "Pain": False,
             "AVCPU_Alert": True,
             "Nausea": False,
-            "Vomiting_since_last_round": False,
-            "Lying_down": False,
+            "VomitingSinceLastRound": False,
+            "LyingDown": False,
         }
 
         for col, val in static_fills.items():
@@ -815,6 +825,10 @@ class SCIData(pd.DataFrame):
                 "ReadmissionTimespan",
                 "ReadmittedTimespan",
                 "CriticalReadmitted",
+                "ReadmissionBand",
+                "AgeBand",
+                "LastSpecialty",
+                "AdmittedAfterAEC",
             ]
         )
 
@@ -1244,7 +1258,7 @@ class SCICols:
     admission = [
         "AdmittedAfterAEC",
         "AdmissionMethodDescription",
-        "Not_SDEC",
+        "AdmittedFromSDEC",
         "AssessmentAreaDischarge",
         "AdmissionSpecialty",
         "LastSpecialty",
@@ -1355,35 +1369,35 @@ class SCICols:
     news_data = [
         "Respiration_rate",
         "NEWS_resp_rate_score",
-        "Assisted_breathing",
-        "Breathing_device",
+        "AssistedBreathing",
+        "BreathingDevice",
         "NEWS_device_air_score",
         "O2_saturation",
         "Oxygen_flow_rate",
         "NEWS_O2_sat_score",
         "Temperature",
         "NEWS_temperature_score",
-        "Lying_down",
-        "BP_Systolic",
-        "BP_Diastolic",
+        "LyingDown",
+        "SystolicBP",
+        "DiastolicBP",
         "NEWS_BP_score",
-        "Heart_rate",
+        "HeartRate",
         "NEWS_heart_rate_score",
         "AVCPU_Alert",
         "NEWS_level_of_con_score",
         "Pain",
         "Nausea",
-        "Vomiting_since_last_round",
+        "VomitingSinceLastRound",
     ]
 
     news_data_raw = [
         "Respiration_rate",
         "O2_saturation",
         "Temperature",
-        "BP_Systolic",
-        "Heart_rate",
+        "SystolicBP",
+        "HeartRate",
         "AVCPU_Alert",
-        "Assisted_breathing",
+        "AssistedBreathing",
     ]
 
     news_data_scored = [
@@ -1397,13 +1411,13 @@ class SCICols:
     ]
 
     news_data_extras = [
-        "Vomiting_since_last_round",
-        "BP_Diastolic",
-        "Lying_down",
+        "VomitingSinceLastRound",
+        "DiastolicBP",
+        "LyingDown",
         "Pain",
         "Oxygen_flow_rate",
         "Nausea",
-        "Breathing_device",
+        "BreathingDevice",
     ]
 
     icd10_grouping = [
@@ -1443,7 +1457,7 @@ class SCICols:
         "AdmissionMethodDescription": "c",
         "AdmissionSpecialty": "c",
         "AgeBand": "c",
-        "Not_SDEC": "i",
+        "AdmittedFromSDEC": "i",
         "LastSpecialty": "c",
         "MainICD10": "c",
         "SecDiag1": "c",
@@ -1458,19 +1472,19 @@ class SCICols:
         "Potassium_serum": "q",
         "Creatinine": "q",
         "Respiration_rate": "q",
-        "Assisted_breathing": "i",
-        "Breathing_device": "c",
+        "AssistedBreathing": "i",
+        "BreathingDevice": "c",
         "O2_saturation": "q",
         "Oxygen_flow_rate": "q",
         "Temperature": "q",
-        "Lying_down": "i",
-        "BP_Systolic": "q",
-        "BP_Diastolic": "q",
-        "Heart_rate": "q",
+        "LyingDown": "i",
+        "SystolicBP": "q",
+        "DiastolicBP": "q",
+        "HeartRate": "q",
         "AVPU": "q",
         "Pain": "i",
         "Nausea": "i",
-        "Vomiting_since_last_round": "i",
+        "VomitingSinceLastRound": "i",
         "Readmission": "i",
         "DiedDuringStay": "i",
         "DiedWithin30Days": "i",
