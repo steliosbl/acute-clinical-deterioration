@@ -310,8 +310,7 @@ class SCIData(pd.DataFrame):
         :param sdec_wards: The wards to search for. By default, ['AEC', 'AAA']
         """
         r = self.copy()
-        m = r[SCICols.wards].isin(sdec_wards)
-        r[col_name] = m.any(axis=1)
+        r[col_name] = r.AdmitWard.isin(sdec_wards)
 
         return SCIData(r)
 
@@ -829,6 +828,7 @@ class SCIData(pd.DataFrame):
                 "AgeBand",
                 "LastSpecialty",
                 "AdmittedAfterAEC",
+                "AssessmentAreaAdmission",
             ]
         )
 
@@ -1258,7 +1258,7 @@ class SCICols:
     admission = [
         "AdmittedAfterAEC",
         "AdmissionMethodDescription",
-        "AdmittedFromSDEC",
+        "AssessmentAreaAdmission",
         "AssessmentAreaDischarge",
         "AdmissionSpecialty",
         "LastSpecialty",

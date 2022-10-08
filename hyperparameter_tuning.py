@@ -195,11 +195,11 @@ def tune_xgboost(X_train, y_train, n_trials=100, timeout=60 * 60, n_jobs=-1):
 
 
 class LgbmObjective:
-    def __init__(self, X_train, y_train, categorical_cols_idx):
-        self.X_train, self.y_train, self.categorical_cols_idx = (
+    def __init__(self, X_train, y_train, score):
+        self.X_train, self.y_train, self.score = (
             X_train,
             y_train,
-            categorical_cols_idx,
+            score,
         )
 
     def __call__(self, trial):
@@ -243,16 +243,22 @@ class LgbmObjective:
                 self.X_train,
                 self.y_train,
                 cv=5,
-                scoring="roc_auc",
+                scoring=self.score,
                 #  fit_params={"LGBM__categorical_feature": self.categorical_cols_idx},
             )
         return cv["test_score"].mean()
 
 
 def tune_lgbm(
-    X_train, y_train, categorical_cols_idx, n_trials=100, timeout=60 * 60, n_jobs=-1
+    X_train,
+    y_train,
+    categorical_cols_idx,
+    n_trials=100,
+    timeout=60 * 60,
+    n_jobs=-1,
+    score="roc_auc",
 ):
-    obj = LgbmObjective(X_train, y_train, categorical_cols_idx)
+    obj = LgbmObjective(X_train, y_train, score)
     study = optuna.create_study(
         direction="maximize", study_name="LightGBM optimization"
     )
@@ -379,33 +385,36 @@ def tune_isolationforest(X_train, y_train, n_trials=100, timeout=60 * 60, n_jobs
 
 
 class LogisticObjective:
-    def __init__(self, X_train, y_train):
-        self.X_train, self.y_train = X_train, y_train
+    def __init__(self, X_train, y_train, score="roc_auc"):
+        self.X_train, self.y_train, self.score = X_train, y_train, score
 
     def __call__(self, trial):
-        param = {"max_iter": 1000}
-        param["penalty"] = trial.suggest_categorical("penalty", ["l2", "l1"])
-        if param["penalty"] == "l1":
-            param["solver"] = "saga"
-        else:
-            param["solver"] = "lbfgs"
-        param["C"] = trial.suggest_float("C", 0.01, 10)
-        param["class_weight"] = trial.suggest_categorical(
-            "class_weight", [None, "balanced"]
+        param = {"max_iter": 1000, "solver": "saga"}
+        param["penalty"] = trial.suggest_categorical(
+            "penalty", ["l2", "l1", "elasticnet"]
         )
+        if param["penalty"] == "elasticnet":
+            param["l1_ratio"] = trial.suggest_float("l1_ratio", 0.05, 0.95)
+        else:
+            param["l1_ratio"] = None
+
+        param["C"] = trial.suggest_float("C", 0.01, 10)
+        param["class_weight"] = trial.suggest_float("class_weight", 0.1, 0.9)
 
         model = LogisticRegression().set_params(**param)
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
             cv = cross_validate(
-                model, self.X_train, self.y_train, cv=5, scoring="roc_auc"
+                model, self.X_train, self.y_train, cv=5, scoring=self.score
             )
         return cv["test_score"].mean()
 
 
-def tune_logisticregression(X_train, y_train, n_trials=100, timeout=60 * 60, n_jobs=-1):
-    obj = LogisticObjective(X_train, y_train)
+def tune_logisticregression(
+    X_train, y_train, n_trials=100, timeout=60 * 60, n_jobs=-1, score="roc_auc"
+):
+    obj = LogisticObjective(X_train, y_train, score)
     study = optuna.create_study(
         direction="maximize", study_name="Logistic Regression optimization"
     )

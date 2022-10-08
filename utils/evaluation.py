@@ -556,7 +556,13 @@ def plot_shap_features_joint(
     fig = plt.figure(figsize=figsize)
 
     ax1 = fig.add_subplot(122, aspect="auto")
-    shap.summary_plot(shap_values, max_display=max_display, show=False, plot_size=None)
+    shap.summary_plot(
+        shap_values,
+        max_display=max_display,
+        show=False,
+        plot_size=None,
+        color=plt.get_cmap("coolwarm"),
+    )
     ax1.set_yticklabels([])
 
     ax2 = fig.add_subplot(121, aspect=bar_aspect)
@@ -579,6 +585,7 @@ def plot_shap_features_joint(
 
 
 def confusion_matrix_multiplot(y_true, y_preds, save=None, plot_title=None):
+    sns.set_style('darkgrid')
     fig, ax = plt.subplots(1, len(y_preds), figsize=(4 * len(y_preds), 4))
 
     if type(list(y_preds.values())[0]) == tuple:
@@ -688,6 +695,7 @@ def evaluate_multiple(
         plt.savefig(save, bbox_inches="tight", dpi=100)
 
     plt.rc("axes", titlesize=12)
+    sns.set_style('darkgrid')
 
 
 def evaluate_all_outcomes(
@@ -748,7 +756,7 @@ def evaluate_all_outcomes(
 
     # cm_fig = plot_confusion_matrix(y_true, y_pred, ax[2])
     ax[1].legend(loc="upper right")
-    ax[2].legend(loc='upper left')
+    ax[2].legend(loc="upper left")
 
     plt.suptitle(modelkey)
 
