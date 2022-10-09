@@ -399,7 +399,9 @@ class LogisticObjective:
             param["l1_ratio"] = None
 
         param["C"] = trial.suggest_float("C", 0.01, 10)
-        param["class_weight"] = trial.suggest_float("class_weight", 0.1, 0.9)
+        param["class_weight"] = trial.suggest_categorical(
+            "class_weight", [None, "balanced"]
+        )
 
         model = LogisticRegression().set_params(**param)
 
