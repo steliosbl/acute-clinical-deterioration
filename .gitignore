@@ -146,3 +146,4 @@ images/*
 .vscode/settings.json
 models/*
 *.out
+jobs/*
