@@ -68,6 +68,20 @@ METRICS = {
 }
 
 
+def biggest_alert_rate_diff(y_true, y_score_x, y_score_y, n_days):
+    r_x, a_x = alert_rate_curve(y_true, y_score_x, n_days)
+    r_y, a_y = alert_rate_curve(y_true, y_score_y, n_days)
+
+    diffs = np.array(
+        [a_x[idx] - a_y[np.argmin(np.abs(r_y - _))] for idx, _ in enumerate(r_x)]
+    )
+
+    biggest_diff = diffs.argmax()
+    recall_at_biggest_diff = r_x[diffs.argmax()]
+    closest_recall_idx_in_y = np.argmin(np.abs(r_y - recall_at_biggest_diff))
+    return recall_at_biggest_diff, a_x[diffs.argmax()], a_y[closest_recall_idx_in_y]
+
+
 def alert_rate_curve(y_true, y_score, n_days, sample=None):
     precision, recall, thresholds = precision_recall_curve(y_true, y_score)
     alert_rate = (
@@ -585,7 +599,7 @@ def plot_shap_features_joint(
 
 
 def confusion_matrix_multiplot(y_true, y_preds, save=None, plot_title=None):
-    sns.set_style('darkgrid')
+    sns.set_style("darkgrid")
     fig, ax = plt.subplots(1, len(y_preds), figsize=(4 * len(y_preds), 4))
 
     if type(list(y_preds.values())[0]) == tuple:
@@ -695,7 +709,7 @@ def evaluate_multiple(
         plt.savefig(save, bbox_inches="tight", dpi=100)
 
     plt.rc("axes", titlesize=12)
-    sns.set_style('darkgrid')
+    sns.set_style("darkgrid")
 
 
 def evaluate_all_outcomes(
