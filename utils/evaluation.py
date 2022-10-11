@@ -568,6 +568,8 @@ def plot_shap_features_joint(
     save=None,
 ):
     sns.set_style("darkgrid")
+    plt.rc("axes", titlesize=7)
+    sns.set(font_scale=5.75)
     fig = plt.figure(figsize=figsize)
 
     ax1 = fig.add_subplot(122, aspect="auto")
@@ -597,6 +599,9 @@ def plot_shap_features_joint(
     plt.subplots_adjust(top=topadjust)
     if save:
         plt.savefig(save, bbox_inches="tight", dpi=200)
+
+    plt.rc("axes", titlesize=12)
+    sns.set(font_scale=1)
 
 
 def confusion_matrix_multiplot(y_true, y_preds, save=None, plot_title=None):
