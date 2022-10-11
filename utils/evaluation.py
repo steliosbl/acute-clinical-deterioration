@@ -568,8 +568,7 @@ def plot_shap_features_joint(
     save=None,
 ):
     sns.set_style("darkgrid")
-    plt.rc("axes", titlesize=7)
-    sns.set(font_scale=5.75)
+    plt.rc("axes", titlesize=3)
     fig = plt.figure(figsize=figsize)
 
     ax1 = fig.add_subplot(122, aspect="auto")
@@ -581,6 +580,8 @@ def plot_shap_features_joint(
         cmap=plt.get_cmap("coolwarm"),
     )
     ax1.set_yticklabels([])
+    ax1.tick_params(axis="both", which="major", labelsize=16)
+    ax1.tick_params(axis="both", which="minor", labelsize=14)
 
     ax2 = fig.add_subplot(121, aspect=bar_aspect)
     shap.summary_plot(
@@ -592,7 +593,8 @@ def plot_shap_features_joint(
         color="purple",
     )
     ax2.set_xlabel("Mean magnitude of SHAP value")
-
+    ax2.tick_params(axis="both", which="major", labelsize=16)
+    ax2.tick_params(axis="both", which="minor", labelsize=14)
     plt.tight_layout()
     plt.subplots_adjust(wspace=wspace)
     plt.suptitle(modelkey, fontsize=16)
