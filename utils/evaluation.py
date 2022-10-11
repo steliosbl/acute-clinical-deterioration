@@ -567,6 +567,7 @@ def plot_shap_features_joint(
     topadjust=0.93,
     save=None,
 ):
+    sns.set_style("darkgrid")
     fig = plt.figure(figsize=figsize)
 
     ax1 = fig.add_subplot(122, aspect="auto")
@@ -575,7 +576,7 @@ def plot_shap_features_joint(
         max_display=max_display,
         show=False,
         plot_size=None,
-        color=plt.get_cmap("coolwarm"),
+        cmap=plt.get_cmap("coolwarm"),
     )
     ax1.set_yticklabels([])
 
@@ -600,6 +601,7 @@ def plot_shap_features_joint(
 
 def confusion_matrix_multiplot(y_true, y_preds, save=None, plot_title=None):
     sns.set_style("darkgrid")
+    sns.set(font_scale=1.3)
     fig, ax = plt.subplots(1, len(y_preds), figsize=(4 * len(y_preds), 4))
 
     if type(list(y_preds.values())[0]) == tuple:
@@ -616,7 +618,7 @@ def confusion_matrix_multiplot(y_true, y_preds, save=None, plot_title=None):
 
     if save:
         plt.savefig(save, bbox_inches="tight", dpi=200)
-
+    sns.set(font_scale=1)
     # return fig
 
 
@@ -630,7 +632,7 @@ def plot_confusion_matrix(y_true, y_pred, ax=None, save=None, plot_title=None):
     cm_fig = ConfusionMatrixDisplay(
         np.rot90(np.flipud(confusion_matrix(y_true, y_pred, normalize="true"))),
         display_labels=[1, 0],
-    ).plot(values_format=".2%", ax=ax)
+    ).plot(values_format=".2%", ax=ax, cmap="Purples")
 
     ax.set_xlabel("True Class")
     ax.set_ylabel("Predicted Class")
