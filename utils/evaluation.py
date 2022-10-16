@@ -113,7 +113,9 @@ def find_earliest_intersection(x1, y1, x2, y2, after=0.7):
     )
 
 
-def plot_alert_rate(y_true, y_preds, n_days, baseline_key=None, ax=None, save=None):
+def plot_alert_rate(
+    y_true, y_preds, n_days, baseline_key=None, ax=None, save=None, save_format="png"
+):
     no_ax = ax is None
     if no_ax:
         sns.set_style("white")
@@ -164,7 +166,12 @@ def plot_alert_rate(y_true, y_preds, n_days, baseline_key=None, ax=None, save=No
     ax.set_ylabel("Mean alerts per day")
     ax.set_xlim(0, 1.08)
     if save:
-        plt.savefig(save, bbox_inches="tight", dpi=200)
+        plt.savefig(
+            save,
+            bbox_inches="tight",
+            dpi=200 if save_format != "svg" else None,
+            format=save_format,
+        )
 
     if no_ax:
         plt.rc("axes", titlesize=12)
@@ -199,7 +206,14 @@ def plot_calibrated_regression_coefficients(
 
 
 def plot_roc_curves(
-    y_true, y_preds, baseline_key=None, linewidth=2, save=None, ax=None, smoothing=True
+    y_true,
+    y_preds,
+    baseline_key=None,
+    linewidth=2,
+    save=None,
+    ax=None,
+    smoothing=True,
+    save_format="png",
 ):
     no_ax = ax is None
     if no_ax:
@@ -240,14 +254,26 @@ def plot_roc_curves(
     ax.set_xlabel("1-Specificity")
     ax.set_ylabel("Sensitivity")
     if save:
-        plt.savefig(save, bbox_inches="tight", dpi=200)
+        plt.savefig(
+            save,
+            bbox_inches="tight",
+            dpi=200 if save_format != "svg" else None,
+            format=save_format,
+        )
 
     if no_ax:
         plt.rc("axes", titlesize=12)
 
 
 def plot_pr_curves(
-    y_true, y_preds, baseline_key=None, linewidth=2, save=None, ax=None, smoothing=True
+    y_true,
+    y_preds,
+    baseline_key=None,
+    linewidth=2,
+    save=None,
+    ax=None,
+    smoothing=True,
+    save_format="png",
 ):
     no_ax = ax is None
     if no_ax:
@@ -289,13 +315,20 @@ def plot_pr_curves(
     ax.set_xlabel("Sensitivity (a.k.a. Recall)")
     ax.set_ylabel("Positive predictive value (a.k.a. Precision)")
     if save:
-        plt.savefig(save, bbox_inches="tight", dpi=200)
+        plt.savefig(
+            save,
+            bbox_inches="tight",
+            dpi=200 if save_format != "svg" else None,
+            format=save_format,
+        )
 
     if no_ax:
         plt.rc("axes", titlesize=12)
 
 
-def plot_calibration_curves(y_true, y_preds, linewidth=2, save=None, ax=None):
+def plot_calibration_curves(
+    y_true, y_preds, linewidth=2, save=None, ax=None, save_format="png"
+):
     no_ax = ax is None
     if no_ax:
         sns.set_style("white")
@@ -319,7 +352,12 @@ def plot_calibration_curves(y_true, y_preds, linewidth=2, save=None, ax=None):
 
     ax.set_title("Calibration")
     if save:
-        plt.savefig(save, bbox_inches="tight", dpi=200)
+        plt.savefig(
+            save,
+            bbox_inches="tight",
+            dpi=200 if save_format != "svg" else None,
+            format=save_format,
+        )
 
     if no_ax:
         plt.rc("axes", titlesize=12)
@@ -566,9 +604,9 @@ def plot_shap_features_joint(
     wspace=-0.3,
     topadjust=0.93,
     save=None,
+    save_format="png",
 ):
     sns.set_style("darkgrid")
-    plt.rc("axes", titlesize=3)
     fig = plt.figure(figsize=figsize)
 
     ax1 = fig.add_subplot(122, aspect="auto")
@@ -582,6 +620,7 @@ def plot_shap_features_joint(
     ax1.set_yticklabels([])
     ax1.tick_params(axis="both", which="major", labelsize=16)
     ax1.tick_params(axis="both", which="minor", labelsize=14)
+    ax1.set_xlabel("SHAP value (impact on model output)", fontsize=16)
 
     ax2 = fig.add_subplot(121, aspect=bar_aspect)
     shap.summary_plot(
@@ -592,18 +631,20 @@ def plot_shap_features_joint(
         show=False,
         color="purple",
     )
-    ax2.set_xlabel("Mean magnitude of SHAP value")
+    ax2.set_xlabel("Mean magnitude of SHAP value", fontsize=16)
     ax2.tick_params(axis="both", which="major", labelsize=16)
     ax2.tick_params(axis="both", which="minor", labelsize=14)
     plt.tight_layout()
     plt.subplots_adjust(wspace=wspace)
-    plt.suptitle(modelkey, fontsize=16)
+    plt.suptitle(modelkey, fontsize=20)
     plt.subplots_adjust(top=topadjust)
     if save:
-        plt.savefig(save, bbox_inches="tight", dpi=200)
-
-    plt.rc("axes", titlesize=12)
-    sns.set(font_scale=1)
+        plt.savefig(
+            save,
+            bbox_inches="tight",
+            dpi=200 if save_format != "svg" else None,
+            format=save_format,
+        )
 
 
 def confusion_matrix_multiplot(y_true, y_preds, save=None, plot_title=None):
@@ -624,7 +665,7 @@ def confusion_matrix_multiplot(y_true, y_preds, save=None, plot_title=None):
     plt.subplots_adjust(wspace=0, hspace=0)
 
     if save:
-        plt.savefig(save, bbox_inches="tight", dpi=200)
+        plt.savefig(save, bbox_inches="tight", dpi=400)
     sns.set(font_scale=1)
     # return fig
 
