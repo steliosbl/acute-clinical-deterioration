@@ -62,7 +62,7 @@ METRICS = {
     "Accuracy": "accuracy",
     "Precision": "precision",
     "Recall": "recall",
-    "F1 Score": "f1",
+    "AP": average_precision_score,
     "F2 Score": f2_score,
     "AUC": "roc_auc",
 }
@@ -706,7 +706,7 @@ def get_metrics_table(y_true, y_preds, n_resamples=99):
                 "Accuracy": accuracy_score(y_true, y_pred),
                 "Precision": precision_score(y_true, y_pred),
                 "Recall": recall_score(y_true, y_pred),
-                "F1 Score": f1_score(y_true, y_pred),
+                "AP": average_precision_score(y_true, y_pred_proba),
                 "F2 Score": fbeta_score(y_true, y_pred, beta=2),
                 "AUC": auc,
                 "AUC_CI": f"{auc:.3f} ({lower:.3f}-{upper:.3f})",
@@ -776,7 +776,7 @@ def evaluate_all_outcomes(
 ):
     sns.set_style("darkgrid")
     sns.set_palette("tab10")
-    fig, ax = plt.subplots(1, 3, figsize=(16, 5))
+    fig, ax = plt.subplots(1, 4, figsize=(22, 5))
 
     metrics = []
     for ylabel, y in [
@@ -791,7 +791,7 @@ def evaluate_all_outcomes(
                 "Accuracy": accuracy_score(y, y_pred),
                 "Precision": precision_score(y, y_pred),
                 "Recall": recall_score(y, y_pred),
-                "F1 Score": f1_score(y, y_pred),
+                "AP": average_precision_score(y, y_pred_proba),
                 "F2 Score": fbeta_score(y, y_pred, beta=2),
                 "AUC": roc_auc_score(y, y_pred_proba),
                 "AUC_CI": f"{roc_auc_score(y, y_pred_proba):.3f} ({lower:.3f}-{upper:.3f})",
@@ -814,6 +814,8 @@ def evaluate_all_outcomes(
             )
         except ValueError:
             pass
+
+    plot_confusion_matrix(y_true, y_pred, plot_title="Critical Event", ax=ax[3])
 
     metrics = pd.DataFrame(metrics).set_index(modelkey)
     display(metrics)
@@ -844,7 +846,7 @@ def evaluate_from_pred(
             "Accuracy": accuracy_score(y_true, y_pred),
             "Precision": precision_score(y_true, y_pred, pos_label=pos_label),
             "Recall": recall_score(y_true, y_pred, pos_label=pos_label),
-            "F1 Score": f1_score(y_true, y_pred, pos_label=pos_label),
+            "AP": average_precision_score(y_true, y_pred_proba),
             "F2 Score": fbeta_score(y_true, y_pred, beta=2, pos_label=pos_label),
             "AUC": roc_auc_score(y_true, y_pred_proba),
             "AUC_CI": f"{roc_auc_score(y_true, y_pred_proba):.3f} ({lower:.3f}-{upper:.3f})",

@@ -2,7 +2,7 @@ import string
 
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
+from itertools import groupby
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -53,7 +53,7 @@ class SCIData(pd.DataFrame):
             .derive_readmission()
             .derive_sdec()
             .omit_vbg()
-            .omit_ae()
+            # .omit_ae()
         )
 
     def clean_all(self):
@@ -304,7 +304,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def derive_sdec(
-        self, sdec_wards=["AEC", "AAA"], col_name="AdmittedFromSDEC",
+        self, sdec_wards=["AEC", "AAA"], col_name="SentToSDEC",
     ):
         """ Determines whether the patient originally was admitted to SDEC but then stayed
         :param sdec_wards: The wards to search for. By default, ['AEC', 'AAA']
@@ -693,12 +693,14 @@ class SCIData(pd.DataFrame):
         ]
         for col in [complaint, diag]:
             r[col] = r[col].str.lower().str.strip(" .?+")
-            r.loc[r[col].isin(vague), col] = np.nan
+            r.loc[r[col].isin(vague), col] = "other"
 
-        mask = ~r[complaint].isin(r[complaint].value_counts().head(50).index)
-        r.loc[mask, complaint] = np.nan
+        mask = (~r[complaint].isin(r[complaint].value_counts().head(50).index)) & (
+            r[complaint].notna()
+        )
+        r.loc[mask, complaint] = "other"
 
-        r[complaint].fillna("other", inplace=True)
+        # r[complaint].fillna("other", inplace=True)
 
         return SCIData(r)
 
@@ -854,7 +856,9 @@ class SCIData(pd.DataFrame):
             )
 
         encoded = (
-            pd.get_dummies(self[cols].stack(), prefix=prefix).groupby(level=0).any()
+            pd.get_dummies(self[cols].stack(), prefix=prefix, prefix_sep="__")
+            .groupby(level=0)
+            .any()
         )
 
         r = pd.concat([self, encoded.astype(int)], axis=1)
@@ -950,6 +954,66 @@ class SCIData(pd.DataFrame):
             r = r.encode_onehot([col], prefix=col.replace("Description", ""))
         return r
 
+    def derive_ae_diagnosis_stems(
+        self,
+        stems=[
+            "confus",
+            "weak",
+            "found",
+            "fof",
+            "dementia",
+            "discharged",
+            "sob",
+            "unwitnessed",
+            "gcs",
+            "diarrh",
+            "vomit",
+            "collaps",
+            "sudden",
+            "woke",
+            "dizz",
+            "tight",
+            "head",
+            "fall",
+            "fell",
+            "pain",
+            "bang",
+            "mobility",
+            "cope",
+            "coping",
+            "weak",
+            "deterio",
+        ],
+        onehot=True,
+    ):
+        r = self.drop(["AandEMainDiagnosis", "AandELocation"], axis=1)
+        col = self.AandEMainDiagnosis
+
+        if onehot:
+            r = r.encode_onehot(
+                ["AandEPresentingComplaint"], "AandEPresentingComplaint"
+            )
+
+            encoded = (
+                pd.get_dummies(
+                    col.str.lower().str.extract(
+                        "(" + "|".join(stems) + ")", expand=False
+                    ),
+                    prefix="AandEMainDiagnosis",
+                    prefix_sep="__",
+                )
+                .groupby(level=0)
+                .sum()
+            ).astype(int)
+            encoded.loc[col.isna()] = np.nan
+            r = pd.concat([r, encoded], axis=1)
+        else:
+            r["AandEMainDiagnosis"] = col.str.lower().str.extract(
+                "(" + "|".join(stems) + ")", expand=False
+            )
+
+        return SCIData(r)
+
     def describe_categories(self):
         categorical_cols = [
             _ for _ in self.columns if self.get_column_types()[_] == "c"
@@ -969,6 +1033,16 @@ class SCIData(pd.DataFrame):
                 if (_.startswith("CCS_") or _.startswith("HSMR_"))
             },
             **SCICols.xgb_types,
+        }
+
+    def get_onehot_categorical_columns(self, separator="__"):
+        return {
+            key: value
+            for key, value in map(
+                lambda _: (_[0], list(_[1])),
+                groupby(sorted(self.columns), key=lambda _: _.split(separator)[0]),
+            )
+            if len(value) > 1
         }
 
     def xy(
@@ -1457,7 +1531,7 @@ class SCICols:
         "AdmissionMethodDescription": "c",
         "AdmissionSpecialty": "c",
         "AgeBand": "c",
-        "AdmittedFromSDEC": "i",
+        "SentToSDEC": "i",
         "LastSpecialty": "c",
         "MainICD10": "c",
         "SecDiag1": "c",
