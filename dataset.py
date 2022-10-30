@@ -6,7 +6,7 @@ from itertools import groupby
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from imblearn.over_sampling import SMOTENC
+from imblearn.over_sampling import SMOTE, SMOTENC
 
 
 class SCIData(pd.DataFrame):
@@ -39,19 +39,22 @@ class SCIData(pd.DataFrame):
 
     @staticmethod
     def SMOTE(X, y, **kwargs):
-        need_to_fillna = X.isna().any().any()
         cols, dtypes = X.columns, X.dtypes
         X = SCIData(X)
+        categorical_cols_idx, categories = X.describe_categories()
+
+        need_to_fillna = X.isna().any().any()
         if need_to_fillna:
             X = X.fill_na()
 
-        categorical_cols_idx, categories = X.describe_categories()
-
-        smote_cat_cols = categorical_cols_idx
-        X, y = SMOTENC(categorical_features=smote_cat_cols, **kwargs).fit_resample(X, y)
+        if len(categorical_cols_idx):
+            X, y = SMOTENC(
+                categorical_features=categorical_cols_idx, **kwargs
+            ).fit_resample(X, y)
+        else:
+            X, y = SMOTE(**kwargs).fit_resample(X, y)
 
         X = SCIData(X, columns=cols).categorize(categories=categories)
-
         if need_to_fillna:
             X = X.unfill_na()
 
@@ -1094,7 +1097,8 @@ class SCIData(pd.DataFrame):
     def unfill_na(self):
         r = self.replace(-1, np.nan)
         for _ in r.select_dtypes(include="category").columns:
-            r[_] = r[_].cat.remove_categories("NAN")
+            if "NAN" in r[_].cat.categories:
+                r[_] = r[_].cat.remove_categories("NAN")
         return r
 
     def xy(
