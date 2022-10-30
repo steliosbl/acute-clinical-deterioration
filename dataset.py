@@ -6,6 +6,8 @@ from itertools import groupby
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
+from imblearn.over_sampling import SMOTENC
+
 
 class SCIData(pd.DataFrame):
     """Represents the SCI dataset and related methods to augment or filter it"""
@@ -34,6 +36,26 @@ class SCIData(pd.DataFrame):
     @classmethod
     def fromxy(cls, X, y):
         return cls(pd.concat([X, pd.Series(y, name="y")], axis=1))
+
+    @staticmethod
+    def SMOTE(X, y, **kwargs):
+        need_to_fillna = X.isna().any().any()
+        cols, dtypes = X.columns, X.dtypes
+        X = SCIData(X)
+        if need_to_fillna:
+            X = X.fill_na()
+
+        categorical_cols_idx, categories = X.describe_categories()
+
+        smote_cat_cols = categorical_cols_idx
+        X, y = SMOTENC(categorical_features=smote_cat_cols, **kwargs).fit_resample(X, y)
+
+        X = SCIData(X, columns=cols).categorize(categories=categories)
+
+        if need_to_fillna:
+            X = X.unfill_na()
+
+        return X, y
 
     def save(self, filename="data/sci_processed.h5"):
         r = self.copy()
@@ -933,11 +955,15 @@ class SCIData(pd.DataFrame):
         r = r.mandate_diagnoses()
         return r.xy()
 
-    def categorize(self):
+    def categorize(self, categories=None):
         r = self.copy().apply(lambda x: x.replace({True: 1.0, False: 0.0}))
 
-        mask = r.select_dtypes(include=object)
-        r[mask.columns] = r.select_dtypes(include=object).astype("category")
+        if categories is None:
+            mask = r.select_dtypes(include=object)
+            r[mask.columns] = r.select_dtypes(include=object).astype("category")
+        else:
+            for col, cats in categories.items():
+                r[col] = pd.Categorical(r[col], cats)
 
         return SCIData(r)
 
@@ -1015,25 +1041,36 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def describe_categories(self):
-        categorical_cols = [
-            _ for _ in self.columns if self.get_column_types()[_] == "c"
+        categorical_cols_idx = [
+            idx for idx, col in enumerate(self.dtypes) if col == "category"
         ]
-
-        categorical_cols_idx = [self.columns.get_loc(_) for _ in categorical_cols]
-        categorical_dims = [self[_].unique().shape[0] for _ in categorical_cols]
-
-        return categorical_cols_idx, categorical_dims
-
-    def get_column_types(self):
-        return {
-            **{_: "q" for _ in self.columns},
-            **{
-                _: "i"
-                for _ in self.columns
-                if (_.startswith("CCS_") or _.startswith("HSMR_"))
-            },
-            **SCICols.xgb_types,
+        categories = {
+            col: self[col].cat.categories
+            for col in self.select_dtypes(include="category").columns
         }
+
+        return categorical_cols_idx, categories
+
+    # def describe_categories(self):
+    #     categorical_cols = [
+    #         _ for _ in self.columns if self.get_column_types()[_] == "c"
+    #     ]
+
+    #     categorical_cols_idx = [self.columns.get_loc(_) for _ in categorical_cols]
+    #     categorical_dims = [self[_].unique().shape[0] for _ in categorical_cols]
+
+    #     return categorical_cols_idx, categorical_dims
+
+    # def get_column_types(self):
+    #     return {
+    #         **{_: "q" for _ in self.columns},
+    #         **{
+    #             _: "i"
+    #             for _ in self.columns
+    #             if (_.startswith("CCS_") or _.startswith("HSMR_"))
+    #         },
+    #         **SCICols.xgb_types,
+    #     }
 
     def get_onehot_categorical_columns(self, separator="__"):
         return {
@@ -1045,6 +1082,21 @@ class SCIData(pd.DataFrame):
             if len(value) > 1
         }
 
+    def fill_na(self):
+        r = self.copy()
+        r.select_dtypes(include="number").fillna(-1, inplace=True)
+        # r.select_dtypes(include="object").fillna("NAN", inplace=True)
+        for _ in r.select_dtypes(include="category").columns:
+            r[_] = r[_].cat.add_categories("NAN").fillna("NAN")
+
+        return SCIData(r)
+
+    def unfill_na(self):
+        r = self.replace(-1, np.nan)
+        for _ in r.select_dtypes(include="category").columns:
+            r[_] = r[_].cat.remove_categories("NAN")
+        return r
+
     def xy(
         self,
         x=[],
@@ -1053,15 +1105,20 @@ class SCIData(pd.DataFrame):
         fillna=False,
         ordinal_encoding=False,
         onehot_encoding=False,
-        outcome="DiedDuringStay",
+        outcome="CriticalEvent",
+        imputation=False,
     ):
         X = (
             self[x]
             if len(x)
-            else super(SCIData, self).drop(
+            else self.drop(
                 SCICols.outcome + SCICols.mortality + [outcome], axis=1, errors="ignore"
             )
         )
+
+        if imputation:
+            X = X.impute_news().impute_blood()
+
         if dtype is not None:
             X = X.astype(dtype)
         y = self[outcome].copy()
@@ -1069,11 +1126,8 @@ class SCIData(pd.DataFrame):
             X = X.dropna(how="any")
             y = y[X.index]
 
-        X = X.apply(lambda x: x.replace({True: 1.0, False: 0.0}))
-
         if fillna:
-            X.select_dtypes(include="number").fillna(-1, inplace=True)
-            X.select_dtypes(include="object").fillna("NAN", inplace=True)
+            X = SCIData(X).fill_na()
 
         X = SCIData(X).categorize()
 

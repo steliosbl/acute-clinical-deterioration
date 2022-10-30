@@ -62,7 +62,7 @@ METRICS = {
     "Accuracy": "accuracy",
     "Precision": "precision",
     "Recall": "recall",
-    "AP": average_precision_score,
+    "AP": 'average_precision',
     "F2 Score": f2_score,
     "AUC": "roc_auc",
 }
