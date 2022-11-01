@@ -1043,14 +1043,20 @@ class SCIData(pd.DataFrame):
 
         return SCIData(r)
 
-    def describe_categories(self):
+    def describe_categories(self, dimensions=False):
         categorical_cols_idx = [
             idx for idx, col in enumerate(self.dtypes) if col == "category"
         ]
-        categories = {
-            col: self[col].cat.categories
-            for col in self.select_dtypes(include="category").columns
-        }
+        if dimensions:
+            categories = [
+                self[col].cat.categories.shape[0]
+                for col in self.select_dtypes(include="category").columns
+            ]
+        else:
+            categories = {
+                col: self[col].cat.categories
+                for col in self.select_dtypes(include="category").columns
+            }
 
         return categorical_cols_idx, categories
 
@@ -1112,16 +1118,15 @@ class SCIData(pd.DataFrame):
         outcome="CriticalEvent",
         imputation=False,
     ):
+        X = self.impute_news().impute_blood() if imputation else self
+
         X = (
-            self[x]
+            SCIData(self[x])
             if len(x)
             else self.drop(
                 SCICols.outcome + SCICols.mortality + [outcome], axis=1, errors="ignore"
             )
         )
-
-        if imputation:
-            X = X.impute_news().impute_blood()
 
         if dtype is not None:
             X = X.astype(dtype)
@@ -1454,7 +1459,7 @@ class SCICols:
         "SecDiag6",
     ]
 
-    diagnoses_ccs_encoded = [f"CCS_{_}" for _ in range(1, 18)]
+    diagnoses_shmi_encoded = [f"SHMI__{_}" for _ in range(1, 143)]
 
     operations = [
         "MainOPCS4",
