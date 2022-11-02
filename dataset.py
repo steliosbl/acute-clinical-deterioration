@@ -37,28 +37,57 @@ class SCIData(pd.DataFrame):
     def fromxy(cls, X, y):
         return cls(pd.concat([X, pd.Series(y, name="y")], axis=1))
 
-    @staticmethod
-    def SMOTE(X, y, **kwargs):
+    @classmethod
+    def resample(cls, resampler, X, y, **kwargs):
         cols, dtypes = X.columns, X.dtypes
-        X = SCIData(X)
+        X = cls(X)
         categorical_cols_idx, categories = X.describe_categories()
 
         need_to_fillna = X.isna().any().any()
         if need_to_fillna:
             X = X.fill_na()
 
-        if len(categorical_cols_idx):
-            X, y = SMOTENC(
-                categorical_features=categorical_cols_idx, **kwargs
-            ).fit_resample(X, y)
-        else:
-            X, y = SMOTE(**kwargs).fit_resample(X, y)
+        X, y = resampler(**kwargs).fit_resample(X, y)
 
-        X = SCIData(X, columns=cols).categorize(categories=categories)
+        X = cls(X, columns=cols).categorize(categories=categories)
         if need_to_fillna:
             X = X.unfill_na()
 
         return X, y
+
+    @classmethod
+    def SMOTE(cls, X, y, **kwargs):
+        categorical_cols_idx, categories = cls(X).describe_categories()
+        if len(categorical_cols_idx):
+            X, y = cls.resample(
+                SMOTENC, X, y, categorical_features=categorical_cols_idx, **kwargs
+            )
+        else:
+            X, y = cls.resample(SMOTE, X, y, **kwargs)
+
+        return X, y
+
+    # def SMOTE(X, y, **kwargs):
+    #     cols, dtypes = X.columns, X.dtypes
+    #     X = SCIData(X)
+    #     categorical_cols_idx, categories = X.describe_categories()
+
+    #     need_to_fillna = X.isna().any().any()
+    #     if need_to_fillna:
+    #         X = X.fill_na()
+
+    #     if len(categorical_cols_idx):
+    #         X, y = SMOTENC(
+    #             categorical_features=categorical_cols_idx, **kwargs
+    #         ).fit_resample(X, y)
+    #     else:
+    #         X, y = SMOTE(**kwargs).fit_resample(X, y)
+
+    #     X = SCIData(X, columns=cols).categorize(categories=categories)
+    #     if need_to_fillna:
+    #         X = X.unfill_na()
+
+    #     return X, y
 
     def save(self, filename="data/sci_processed.h5"):
         r = self.copy()
