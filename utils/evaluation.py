@@ -62,7 +62,7 @@ METRICS = {
     "Accuracy": "accuracy",
     "Precision": "precision",
     "Recall": "recall",
-    "AP": 'average_precision',
+    "AP": "average_precision",
     "F2 Score": f2_score,
     "AUC": "roc_auc",
 }
@@ -386,11 +386,11 @@ def roc_auc_ci(y_true, y_score):
     return lower, AUC, upper
 
 
-def roc_auc_ci_bootstrap(y_true, y_score, n_resamples=9999):
+def bootstrap_metric(metric, y_true, y_score, n_resamples=9999):
     """ Computes AUROC with 95% confidence intervals by boostrapping """
     res = st.bootstrap(
         data=(y_true.to_numpy(), y_score),
-        statistic=roc_auc_score,
+        statistic=metric,
         confidence_level=0.95,
         method="percentile",
         n_resamples=n_resamples,
@@ -400,6 +400,15 @@ def roc_auc_ci_bootstrap(y_true, y_score, n_resamples=9999):
     )
 
     return res.confidence_interval.low, res.confidence_interval.high
+
+
+def roc_auc_ci_bootstrap(y_true, y_score, n_resamples=9999):
+    """ Computes AUROC with 95% confidence intervals by boostrapping """
+    return bootstrap_metric(roc_auc_score, y_true, y_score, n_resamples)
+
+
+def average_precision_ci_bootstrap(y_true, y_score, n_resamples):
+    return bootstrap_metric(average_precision_score, y_true, y_score, n_resamples)
 
 
 def joint_plot(
@@ -693,6 +702,43 @@ def plot_confusion_matrix(y_true, y_pred, ax=None, save=None, plot_title=None):
         plt.rc("axes", titlesize=12)
 
     return cm_fig
+
+
+def get_threshold(y_train, y_pred_proba, target=0.85):
+    """ Given prediction probabilities, sets the prediction threshold to approach the given target recall
+    """
+
+    # Get candidate thresholds from the model, and find the one that gives the best fbeta score
+    precision, recall, thresholds = precision_recall_curve(y_train, y_pred_proba)
+    closest = thresholds[np.abs(recall - target).argmin()]
+
+    return closest
+
+
+def get_threshold_fpr(y_train, y_pred_proba, target=0.15):
+    fpr, tpr, thresholds = roc_curve(y_train, y_pred_proba)
+    closest = thresholds[np.abs(fpr - target).argmin()]
+
+    return closest
+
+
+def get_metrics(y_true, y_pred, y_pred_proba, n_resamples=99):
+    auc_lower, auc_upper = roc_auc_ci_bootstrap(y_true, y_pred_proba, n_resamples)
+    ap_lower, ap_upper = average_precision_ci_bootstrap(
+        y_true, y_pred_proba, n_resamples
+    )
+    return dict(
+        AUC=roc_auc_score(y_true, y_pred_proba),
+        AUC_Upper=auc_upper,
+        AUC_Lower=auc_lower,
+        AP=average_precision_score(y_true, y_pred_proba),
+        AP_Upper=ap_upper,
+        AP_Lower=ap_lower,
+        Accuracy=accuracy_score(y_true, y_pred),
+        Precision=precision_score(y_true, y_pred),
+        Recall=recall_score(y_true, y_pred),
+        F2=fbeta_score(y_true, y_pred, beta=2),
+    )
 
 
 def get_metrics_table(y_true, y_preds, n_resamples=99):
