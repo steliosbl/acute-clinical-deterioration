@@ -369,7 +369,7 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def derive_critical_care(
-        self, critical_wards=["CCU", "HH1M"], within=1, col_name="CriticalCare",
+        self, critical_wards=["CCU"], within=1, col_name="CriticalCare",
     ):
         """Determines admission to critical care at any point during the spell as indicated by admission to specified wards
         :param critical_wards: The wards to search for. By default, ['CCU', 'HH1M']
@@ -1184,6 +1184,40 @@ class SCIData(pd.DataFrame):
         r[col] = r.TotalLOS >= over
 
         return SCIData(r)
+
+    @property
+    def feature_groups(self):
+        news = SCICols.news_data_raw
+        news_scores = SCICols.news_data_scored
+        news_extended = SCICols.news_data_raw + SCICols.news_data_extras
+        news_scores_extended = SCICols.news_data_scored + SCICols.news_data_extras
+        labs = SCICols.blood
+        hospital = [
+            "AdmissionMethodDescription",
+            "AdmissionSpecialty",
+            "SentToSDEC",
+            "Readmission",
+        ]
+        ae = ["AandEPresentingComplaint", "AandEMainDiagnosis"]
+        diagnoses = [_ for _ in self.columns if _.startswith("SHMI__")]
+        phenotype = ["Female", "Age"]
+
+        return list(
+            dict(
+                news=news,
+                news_extended=news_extended,
+                news_with_phenotype=news_extended + phenotype,
+                with_ae_notes=news_extended + phenotype + ae,
+                with_labs=news_extended + phenotype + labs,
+                with_notes_and_labs=news_extended + phenotype + ae + labs,
+                with_hospital=news_extended + phenotype + hospital,
+                with_notes_and_hospital=news_extended + phenotype + ae + hospital,
+                with_labs_and_hospital=news_extended + phenotype + labs + hospital,
+                with_notes_labs_and_hospital=news_extended + ae + phenotype + labs + hospital,
+                with_labs_and_diagnoses=news_extended + phenotype + labs + diagnoses,
+                all=news_extended + phenotype + ae + labs + hospital + diagnoses,
+            ).items()
+        )
 
 
 def justify(df, invalid_val=np.nan, axis=1, side="left"):
