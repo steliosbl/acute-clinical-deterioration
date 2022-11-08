@@ -119,11 +119,11 @@ class Estimator:
         return shap_values
 
     @classmethod
-    def explain(cls, model, X_test):
+    def explain(cls, model, X_train, X_test):
         ordinal_encode = (not cls._requirements["onehot"]) and (
             not cls._requirements["ordinal"]
         )
-        shap_values = cls._explainer(model, **cls._explainer_args)(
+        shap_values = cls._explainer(model, X_train, **cls._explainer_args)(
             X_test.ordinal_encode_categories() if ordinal_encode else X_test
         )
 

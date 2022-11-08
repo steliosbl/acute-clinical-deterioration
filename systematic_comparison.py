@@ -205,7 +205,7 @@ def construct_study(
             explanations = estimator.explain_calibrated(model, X_train, X_test)
         else:
             model = objective._pipeline_factory(**params).fit(X_train, y_train)
-            explanations = estimator.explain(model[estimator._name], X_test)
+            explanations = estimator.explain(model[estimator._name], X_train, X_test)
 
         if model_persistence_path is not None:
             with open(f"{model_persistence_path}/{name}.bin", "wb") as file:
