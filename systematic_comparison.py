@@ -195,6 +195,7 @@ def construct_study(
                 }
             }
 
+        explanations = []
         if estimator._requirements["calibration"]:
             model = CalibratedClassifierCV(
                 objective._pipeline_factory(**params),
@@ -202,10 +203,14 @@ def construct_study(
                 method="isotonic",
                 n_jobs=cv_jobs,
             ).fit(X_train, y_train)
-            explanations = estimator.explain_calibrated(model, X_train, X_test)
+            if estimator._requirements["explanation"]:
+                explanations = estimator.explain_calibrated(model, X_train, X_test)
         else:
             model = objective._pipeline_factory(**params).fit(X_train, y_train)
-            explanations = estimator.explain(model[estimator._name], X_train, X_test)
+            if estimator._requirements["explanation"]:
+                explanations = estimator.explain(
+                    model[estimator._name], X_train, X_test
+                )
 
         if model_persistence_path is not None:
             with open(f"{model_persistence_path}/{name}.bin", "wb") as file:

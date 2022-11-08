@@ -25,12 +25,12 @@ from dataset import SCIData, SCICols
 from utils.shaputils import group_explanations_by_categorical
 
 
-try:
-    from sklearnex import patch_sklearn
+# try:
+#     from sklearnex import patch_sklearn
 
-    patch_sklearn()
-except ImportError:
-    pass
+#     patch_sklearn()
+# except ImportError:
+#     pass
 
 
 class Estimator:
@@ -123,6 +123,7 @@ class Estimator:
         ordinal_encode = (not cls._requirements["onehot"]) and (
             not cls._requirements["ordinal"]
         )
+
         shap_values = cls._explainer(model, X_train, **cls._explainer_args)(
             X_test.ordinal_encode_categories() if ordinal_encode else X_test
         )
@@ -158,6 +159,7 @@ class Estimator_XGBoost(Estimator):
         fillna=False,
         resampling=False,
         calibration=True,
+        explanation=False,
     )
 
     _static_params = dict(
@@ -223,6 +225,7 @@ class Estimator_LightGBM(Estimator):
         fillna=False,
         resampling=False,
         calibration=True,
+        explanation=True,
     )
 
     _static_params = dict(
@@ -293,6 +296,7 @@ class Estimator_LogisticRegression(Estimator):
         fillna=True,
         resampling=False,
         calibration=True,
+        explanation=True,
     )
 
     _static_params = dict(max_iter=2000, solver="lbfgs", random_state=42, penalty="l2")
@@ -326,6 +330,7 @@ class Estimator_RandomForest(Estimator):
         fillna=True,
         resampling=False,
         calibration=True,
+        explanation=True,
     )
     _tuning_params_default = dict(
         n_estimators=250,
@@ -401,6 +406,7 @@ class Estimator_IsolationForest(Estimator):
         fillna=True,
         resampling=False,
         calibration=False,
+        explanation=False,
     )
 
     _tuning_params_default = dict(
@@ -473,6 +479,7 @@ class Estimator_TabNet(Estimator):
         fillna=True,
         resampling=False,
         calibration=True,
+        explanation=False,
     )
 
     _static_params = dict(
