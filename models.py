@@ -16,9 +16,14 @@ from lightgbm import LGBMClassifier
 from xgboost import XGBClassifier
 from pytorch_tabnet.tab_model import TabNetClassifier
 
+import shap
+
 from typing import Dict, Any, Iterable
 
 from dataset import SCIData, SCICols
+
+from utils.shaputils import group_explanations_by_categorical
+
 
 try:
     from sklearnex import patch_sklearn
@@ -35,6 +40,7 @@ class Estimator:
     _static_params: Dict[str, Any] = {}
     _tuning_params_default: Dict[str, Any] = {}
     _fit_params: Dict[str, Any] = {}
+    _explainer_args: Dict[str, Any] = {}
 
     def __init__(self, sci_train):
         pass
@@ -63,7 +69,7 @@ class Estimator:
         return {f"{cls._name}__{key}": value for key, value in cls._fit_params.items()}
 
     @classmethod
-    def get_xy(cls, sci_train, sci_test=None, features=None):
+    def get_xy(cls, sci_train, sci_test=None, features=[]):
         sci_args = dict(
             x=features,
             imputation=cls._requirements["imputation"],
@@ -78,6 +84,53 @@ class Estimator:
 
         (X_test, y_test) = sci_test.xy(**sci_args)
         return (X_train, y_train, X_test, y_test)
+
+    @classmethod
+    def explain_calibrated(cls, model, X_test):
+        ordinal_encode = (
+            not cls._requirements["onehot"] and not cls._requirements["ordinal"]
+        )
+        X = X_test.ordinal_encode_categories() if ordinal_encode else X_test
+        
+        explainers = [
+            cls._explainer(_.base_estimator[cls._name], **cls._explainer_args)(X)
+            for _ in model.calibrated_classifiers
+        ]
+
+        shap_values = shap.Explanation(
+            base_values=np.array([_.base_values for _ in explainers]).mean(axis=0),
+            values=np.array([_.values for _ in explainers]).mean(axis=0),
+            data=X_test.values,
+            feature_names=X_test.columns,
+        )
+
+        if cls._requirements["onehot"]:
+            shap_values = group_explanations_by_categorical(
+                shap_values, X_test, X_test.get_onehot_categorical_columns()
+            )
+
+        return shap_values
+
+    @classmethod
+    def explain(cls, model, X_test):
+        ordinal_encode = (
+            not cls._requirements["onehot"] and not cls._requirements["ordinal"]
+        )
+        shap_values = cls._explainer(model, **cls._explainer_args)(X_test.ordinal_encode_categories() if ordinal_encode else X_test)
+
+        if cls._requirements["onehot"]:
+            shap_values = group_explanations_by_categorical(
+                shap_values, X_test, X_test.get_onehot_categorical_columns()
+            )
+        elif ordinal_encode:
+            shap_values = shap.Explanation(
+                base_values=shap_values.base_values,
+                values=shap_values.values,
+                data=X_test.values,
+                feature_names=X_test.columns,
+            )
+
+        return shap_values
 
 
 class Estimator_XGBoost(Estimator):
@@ -96,21 +149,20 @@ class Estimator_XGBoost(Estimator):
         enable_categorical=True,
     )
 
-    _tuning_params_default = {
-        **dict(
-            tree_method="hist",
-            alpha=7e-05,
-            subsample=0.42,
-            colsample_bytree=0.87,
-            scale_pos_weight=14,
-            max_depth=7,
-            min_child_weight=10,
-            eta=0.035,
-            gamma=4e-08,
-            grow_policy="lossguide",
-        ),
-        "lambda": 7e-2,
-    }
+    _tuning_params_default = dict(
+        tree_method="hist",
+        alpha=7e-05,
+        subsample=0.42,
+        colsample_bytree=0.87,
+        scale_pos_weight=14,
+        max_depth=7,
+        min_child_weight=10,
+        eta=0.035,
+        gamma=4e-08,
+        grow_policy="lossguide",
+    ) | {"lambda": 7e-2}
+
+    _explainer = shap.TreeExplainer
 
     @classmethod
     def suggest_parameters(cls, trial):
@@ -169,6 +221,8 @@ class Estimator_LightGBM(Estimator):
         min_child_samples=6,
     )
 
+    _explainer = shap.TreeExplainer
+
     @classmethod
     def suggest_parameters(cls, trial):
         suggestions = dict(
@@ -216,6 +270,9 @@ class Estimator_LogisticRegression(Estimator):
 
     _tuning_params_default = dict(penalty="l2", C=5.9, class_weight="balanced")
 
+    _explainer = shap.LinearExplainer
+    _explainer_args = dict(feature_perturbation="correlation_dependent")
+
     @classmethod
     def suggest_parameters(cls, trial):
         suggestions = dict(
@@ -244,6 +301,8 @@ class Estimator_RandomForest(Estimator):
         max_samples=0.75,
         class_weight="balanced",
     )
+
+    _explainer = shap.TreeExplainer
 
     @classmethod
     def suggest_parameters(cls, trial):
@@ -312,6 +371,8 @@ class Estimator_IsolationForest(Estimator):
         max_features=0.69,
         bootstrap=False,
     )
+
+    _explainer = shap.TreeExplainer
 
     @classmethod
     def suggest_parameters(cls, trial):

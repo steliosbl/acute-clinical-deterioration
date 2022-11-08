@@ -41,14 +41,14 @@ def get_studies(sci_train, study_grid=None, cli_model_arg=None):
         ],
         gpu=[Estimator_TabNet],
     )
-    estimators['all'] = estimators['cpu'] + estimators['gpu']
-    estimators.update({_._name: [_] for _ in estimators['all']})
+    estimators["all"] = estimators["cpu"] + estimators["gpu"]
+    estimators.update({_._name: [_] for _ in estimators["all"]})
 
     if study_grid is None:
         study_grid = dict(
             estimator=estimators[cli_model_arg],
             resampler=[No_Resampling, Resampler_RandomUnderSampler, Resampler_SMOTE],
-            features=sci_train.feature_groups,
+            features=sci_train.feature_group_combinations,
         )
 
     k, v = zip(*study_grid.items())
@@ -324,7 +324,7 @@ def run(args):
             **_, **args, sci_train=sci_train_, sci_test=sci_test, n_trials=n_trials
         )
         for _ in get_studies(sci_train, cli_model_arg=args["models"])
-    ][:5]
+    ]
 
     study_args = dict(
         model_persistence_path=args["persist"],
