@@ -86,14 +86,16 @@ class Estimator:
         return (X_train, y_train, X_test, y_test)
 
     @classmethod
-    def explain_calibrated(cls, model, X_test):
+    def explain_calibrated(cls, model, X_train, X_test):
         ordinal_encode = (
             not cls._requirements["onehot"] and not cls._requirements["ordinal"]
         )
         X = X_test.ordinal_encode_categories() if ordinal_encode else X_test
 
         explainers = [
-            cls._explainer(_.base_estimator[cls._name], **cls._explainer_args)(X)
+            cls._explainer(
+                _.base_estimator[cls._name], masker=X_train, **cls._explainer_args
+            )(X)
             for _ in model.calibrated_classifiers_
         ]
 
@@ -105,25 +107,32 @@ class Estimator:
         )
 
         if cls._requirements["onehot"]:
-            shap_values = group_explanations_by_categorical(
-                shap_values, X_test, X_test.get_onehot_categorical_columns()
-            )
+            cols = X_test.get_onehot_categorical_columns()
+            if len(cols):
+                shap_values = group_explanations_by_categorical(
+                    shap_values, X_test, cols
+                )
+
+        if len(shap_values.shape) > 2:
+            shap_values = shap_values[:, :, 1]
 
         return shap_values
 
     @classmethod
     def explain(cls, model, X_test):
-        ordinal_encode = (
-            not cls._requirements["onehot"] and not cls._requirements["ordinal"]
+        ordinal_encode = (not cls._requirements["onehot"]) and (
+            not cls._requirements["ordinal"]
         )
         shap_values = cls._explainer(model, **cls._explainer_args)(
             X_test.ordinal_encode_categories() if ordinal_encode else X_test
         )
 
         if cls._requirements["onehot"]:
-            shap_values = group_explanations_by_categorical(
-                shap_values, X_test, X_test.get_onehot_categorical_columns()
-            )
+            cols = X_test.get_onehot_categorical_columns()
+            if len(cols) and False:
+                shap_values = group_explanations_by_categorical(
+                    shap_values, X_test, cols
+                )
         elif ordinal_encode:
             shap_values = shap.Explanation(
                 base_values=shap_values.base_values,
@@ -131,6 +140,9 @@ class Estimator:
                 data=X_test.values,
                 feature_names=X_test.columns,
             )
+
+        if len(shap_values.shape) > 2:
+            shap_values = shap_values[:, :, 1]
 
         return shap_values
 
@@ -140,7 +152,12 @@ class Estimator_XGBoost(Estimator):
     _estimator = XGBClassifier
 
     _requirements = dict(
-        onehot=False, ordinal=False, imputation=False, fillna=False, resampling=False
+        onehot=False,
+        ordinal=False,
+        imputation=False,
+        fillna=False,
+        resampling=False,
+        calibration=True,
     )
 
     _static_params = dict(
@@ -200,7 +217,12 @@ class Estimator_LightGBM(Estimator):
     _estimator = LGBMClassifier
 
     _requirements = dict(
-        onehot=False, ordinal=False, imputation=False, fillna=False, resampling=False
+        onehot=False,
+        ordinal=False,
+        imputation=False,
+        fillna=False,
+        resampling=False,
+        calibration=True,
     )
 
     _static_params = dict(
@@ -265,7 +287,12 @@ class Estimator_LogisticRegression(Estimator):
     _estimator = LogisticRegression
 
     _requirements = dict(
-        onehot=True, ordinal=False, imputation=True, fillna=True, resampling=False
+        onehot=True,
+        ordinal=False,
+        imputation=True,
+        fillna=True,
+        resampling=False,
+        calibration=True,
     )
 
     _static_params = dict(max_iter=2000, solver="lbfgs", random_state=42, penalty="l2")
@@ -293,7 +320,12 @@ class Estimator_RandomForest(Estimator):
     _name = "RandomForest"
 
     _requirements = dict(
-        onehot=False, ordinal=True, imputation=False, fillna=True, resampling=False
+        onehot=False,
+        ordinal=True,
+        imputation=False,
+        fillna=True,
+        resampling=False,
+        calibration=True,
     )
     _tuning_params_default = dict(
         n_estimators=250,
@@ -363,7 +395,12 @@ class Estimator_IsolationForest(Estimator):
     _name = "IsolationForest"
     _estimator = IsolationForestWrapper
     _requirements = dict(
-        onehot=True, ordinal=False, imputation=True, fillna=True, resampling=False
+        onehot=True,
+        ordinal=False,
+        imputation=True,
+        fillna=True,
+        resampling=False,
+        calibration=False,
     )
 
     _tuning_params_default = dict(
@@ -430,7 +467,12 @@ class Estimator_TabNet(Estimator):
     _estimator = TabNetWrapper
     _name = "TabNet"
     _requirements = dict(
-        onehot=False, ordinal=True, imputation=True, fillna=True, resampling=False
+        onehot=False,
+        ordinal=True,
+        imputation=True,
+        fillna=True,
+        resampling=False,
+        calibration=True,
     )
 
     _static_params = dict(

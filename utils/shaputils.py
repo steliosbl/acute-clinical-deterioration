@@ -20,7 +20,7 @@ def group_explanations_by_categorical(explanations, X, categorical_groups):
     for group, col_names in categorical_groups.items():
         idxs = [X.columns.get_loc(_) for _ in col_names]
         idxs_to_exclude += idxs
-        summed_shap_values.append(explanations[:, idxs].sum(axis=1))
+        summed_shap_values.append(explanations.values[:, idxs].sum(axis=1))
 
     joined_categorical_data = [
         get_joined_categorical_string(X, _).values[:, np.newaxis]
@@ -31,12 +31,12 @@ def group_explanations_by_categorical(explanations, X, categorical_groups):
 
     r = shap.Explanation(
         data=np.concatenate(
-            [explanations[:, idxs_to_include].data] + joined_categorical_data, axis=1,
+            [explanations.data[:, idxs_to_include]] + joined_categorical_data, axis=1,
         ),
         base_values=explanations.base_values,
         values=np.concatenate(
-            [explanations[:, idxs_to_include].values]
-            + [_.values[:, np.newaxis] for _ in summed_shap_values],
+            [explanations.values[:, idxs_to_include]]
+            + [_[:, np.newaxis] for _ in summed_shap_values],
             axis=1,
         ),
         feature_names=list(X.columns[idxs_to_include])
