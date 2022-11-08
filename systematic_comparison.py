@@ -183,8 +183,20 @@ def construct_study(
     )
 
     def handle_study_result(model_persistence_path=None, n_resamples=99, **kwargs):
+        params = study.best_params
+        if resampler:
+            params = {
+                k: v for k, v in params.items() if k.startswith(estimator._name)
+            } | {
+                f"{resampler._name}__kw_args": {
+                    k.split("__")[1]: v
+                    for k, v in params.items()
+                    if k.startswith(resampler._name)
+                }
+            }
+
         model = CalibratedClassifierCV(
-            objective._pipeline_factory(**study.best_params),
+            objective._pipeline_factory(**params),
             cv=cv,
             method="isotonic",
             n_jobs=cv_jobs,
