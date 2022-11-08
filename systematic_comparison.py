@@ -24,6 +24,7 @@ from sklearn.model_selection import train_test_split
 
 from imblearn.pipeline import Pipeline as ImbPipeline
 from sklearn.model_selection import cross_validate
+from sklearn.calibration import CalibratedClassifierCV
 
 from models import *
 
@@ -115,9 +116,6 @@ class Objective:
             stop_callback,
         )
 
-        self._best_score = 0
-        self._best_model = None
-
         self._pipeline_factory = PipelineFactory(
             estimator=self._estimator,
             resampler=self._resampler,
@@ -143,12 +141,6 @@ class Objective:
             n_jobs=self._cv_jobs,
             fit_params=self._fit_params,
         )["test_score"].mean()
-
-        if score > self._best_score:
-            self._best_score = score
-            self._best_model = self._pipeline_factory(**trial_params).fit(
-                self._X_train, self._y_train
-            )
 
         if trial.number >= self._n_trials:
             self._stop_callback()
@@ -180,7 +172,7 @@ def construct_study(
     )
     objective = Objective(
         estimator=estimator(SCIData(sci_train[features[1]])),
-        resampler=resampler(SCIData(sci_train[features[1]])),
+        resampler=resampler(SCIData(sci_train[features[1]])) if resampler else None,
         X_train=X_train,
         y_train=y_train,
         cv=cv,
@@ -191,10 +183,17 @@ def construct_study(
     )
 
     def handle_study_result(model_persistence_path=None, n_resamples=99, **kwargs):
-        model = objective._best_model
+        model = CalibratedClassifierCV(
+            objective._pipeline_factory(**study.best_params),
+            cv=cv,
+            method="isotonic",
+            n_jobs=cv_jobs,
+        ).fit(X_train, y_train)
+        explanations = estimator.explain_calibrated(model, X_test)
+
         if model_persistence_path is not None:
-            with open(f"{model_persistence_path}/{name}", "wb") as file:
-                pickle.dump(model, file)
+            with open(f"{model_persistence_path}/{name}.bin", "wb") as file:
+                pickle.dump((model, explanations), file)
 
         try:
             y_pred_proba = model.predict_proba(X_test)[:, 1]
@@ -209,7 +208,7 @@ def construct_study(
             **dict(
                 name=name,
                 estimator=estimator._name,
-                resampler=resampler._name,
+                resampler=resampler._name if resampler else "None",
                 features=features[0],
             ),
             **get_metrics(y_test, y_pred, y_pred_proba, n_resamples),

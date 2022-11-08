@@ -91,10 +91,10 @@ class Estimator:
             not cls._requirements["onehot"] and not cls._requirements["ordinal"]
         )
         X = X_test.ordinal_encode_categories() if ordinal_encode else X_test
-        
+
         explainers = [
             cls._explainer(_.base_estimator[cls._name], **cls._explainer_args)(X)
-            for _ in model.calibrated_classifiers
+            for _ in model.calibrated_classifiers_
         ]
 
         shap_values = shap.Explanation(
@@ -116,7 +116,9 @@ class Estimator:
         ordinal_encode = (
             not cls._requirements["onehot"] and not cls._requirements["ordinal"]
         )
-        shap_values = cls._explainer(model, **cls._explainer_args)(X_test.ordinal_encode_categories() if ordinal_encode else X_test)
+        shap_values = cls._explainer(model, **cls._explainer_args)(
+            X_test.ordinal_encode_categories() if ordinal_encode else X_test
+        )
 
         if cls._requirements["onehot"]:
             shap_values = group_explanations_by_categorical(
