@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from sklearn.base import BaseEstimator
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, SGDClassifier, SGDOneClassSVM
 from sklearn.ensemble import RandomForestClassifier, IsolationForest
 
 from imblearn.over_sampling import SMOTENC
@@ -472,6 +472,71 @@ class TabNetWrapper(TabNetClassifier):
 
     def decision_function(self, X):
         return self.predict_proba(X)[:, 1]
+
+
+class Estimator_LinearSVM(Estimator):
+    _name = "LinearSVM"
+    _estimator = SGDClassifier
+
+    _requirements = dict(
+        onehot=True,
+        ordinal=False,
+        imputation=True,
+        fillna=True,
+        oneclass=False,
+        calibration=True,
+        explanation=False,
+        scaling=True,
+    )
+
+    _static_params = dict(
+        max_iter=2000,
+        loss="hinge",
+        random_state=42,
+        penalty="l2",
+        early_stopping=True,
+        validation_fraction=0.1,
+        learning_rate="optimal",
+    )
+
+    _tuning_params_default = dict(class_weight="balanced", alpha=0.0001,)
+
+    @classmethod
+    def suggest_parameters(cls, trial):
+        suggestions = dict(
+            alpha=trial.suggest_float(f"{cls._name}__alpha", 1e-6, 1e-2, log=True),
+            class_weight=trial.suggest_categorical(
+                f"{cls._name}__class_weight", [None, "balanced"]
+            ),
+        )
+
+        return cls.compile_parameters(suggestions)
+
+
+class Estimator_OneClassSVM(Estimator):
+    _name = "OneClassSVM"
+    _estimator = SGDOneClassSVM
+
+    _requirements = dict(
+        onehot=True,
+        ordinal=False,
+        imputation=True,
+        fillna=True,
+        oneclass=True,
+        calibration=False,
+        explanation=False,
+        scaling=True,
+    )
+
+    _static_params = dict(max_iter=2000, random_state=42, learning_rate="optimal")
+
+    _tuning_params_default = dict(nu=0.5,)
+
+    @classmethod
+    def suggest_parameters(cls, trial):
+        suggestions = dict(nu=trial.suggest_float(f"{cls._name}__nu", 0.1, 1.0),)
+
+        return cls.compile_parameters(suggestions)
 
 
 class Estimator_TabNet(Estimator):

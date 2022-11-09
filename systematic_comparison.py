@@ -57,6 +57,8 @@ def get_studies(sci_train, study_grid=None, cli_model_arg=None):
             Estimator_LogisticRegression,
             Estimator_RandomForest,
             Estimator_XGBoost,
+            Estimator_LinearSVM,
+            Estimator_OneClassSVM,
         ],
         gpu=[Estimator_TabNet],
     )
