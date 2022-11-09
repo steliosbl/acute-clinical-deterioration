@@ -157,9 +157,10 @@ class Estimator_XGBoost(Estimator):
         ordinal=False,
         imputation=False,
         fillna=False,
-        resampling=False,
+        oneclass=False,
         calibration=True,
         explanation=False,
+        scaling=False,
     )
 
     _static_params = dict(
@@ -223,9 +224,10 @@ class Estimator_LightGBM(Estimator):
         ordinal=False,
         imputation=False,
         fillna=False,
-        resampling=False,
+        oneclass=False,
         calibration=True,
         explanation=True,
+        scaling=False,
     )
 
     _static_params = dict(
@@ -294,9 +296,10 @@ class Estimator_LogisticRegression(Estimator):
         ordinal=False,
         imputation=True,
         fillna=True,
-        resampling=False,
+        oneclass=False,
         calibration=True,
         explanation=True,
+        scaling=True,
     )
 
     _static_params = dict(max_iter=2000, solver="lbfgs", random_state=42, penalty="l2")
@@ -328,9 +331,10 @@ class Estimator_RandomForest(Estimator):
         ordinal=True,
         imputation=False,
         fillna=True,
-        resampling=False,
+        oneclass=False,
         calibration=True,
         explanation=True,
+        scaling=False,
     )
     _tuning_params_default = dict(
         n_estimators=250,
@@ -404,9 +408,10 @@ class Estimator_IsolationForest(Estimator):
         ordinal=False,
         imputation=True,
         fillna=True,
-        resampling=False,
+        oneclass=True,
         calibration=False,
         explanation=False,
+        scaling=False,
     )
 
     _tuning_params_default = dict(
@@ -477,9 +482,10 @@ class Estimator_TabNet(Estimator):
         ordinal=True,
         imputation=True,
         fillna=True,
-        resampling=False,
+        oneclass=False,
         calibration=True,
         explanation=False,
+        scaling=False,
     )
 
     _static_params = dict(

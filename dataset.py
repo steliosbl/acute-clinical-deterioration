@@ -5,8 +5,10 @@ import pandas as pd
 from itertools import groupby
 
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.preprocessing import StandardScaler
 
 from imblearn.over_sampling import SMOTE, SMOTENC
+from typing import Iterable, Dict
 
 
 class SCIData(pd.DataFrame):
@@ -1186,6 +1188,20 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     @property
+    def numeric_columns(self):
+        return [
+            col
+            for col in self.select_dtypes(include="number")
+            if not np.isin(self[col].dropna().unique(), [0, 1]).all()
+        ]
+
+    @property
+    def binary_columns(self):
+        return [
+            col for col in self if np.isin(self[col].dropna().unique(), [0, 1]).all()
+        ]
+
+    @property
     def feature_groups(self):
         return dict(
             news=SCICols.news_data_raw,
@@ -1215,10 +1231,7 @@ class SCIData(pd.DataFrame):
             hospital,
             diagnoses,
         ) = self.feature_groups.values()
-        return list(
-            dict(
-                news=news,
-                news_extended=news_extended,
+        r = self.feature_groups | dict(
                 news_scored_extended=news_extended + news_scores,
                 news_with_phenotype=news_extended + phenotype,
                 with_ae_notes=news_extended + phenotype + ae,
@@ -1234,8 +1247,21 @@ class SCIData(pd.DataFrame):
                 + hospital,
                 with_labs_and_diagnoses=news_extended + phenotype + labs + diagnoses,
                 all=news_extended + phenotype + ae + labs + hospital + diagnoses,
-            ).items()
-        )
+            )
+        
+        return list(r.items())
+
+
+class SCICategoriser(BaseEstimator, TransformerMixin):
+    categories: Dict[str, Iterable[str]]
+    columns: Iterable[str]
+
+    def __init__(self, categories, columns):
+        super().__init__()
+        self.categories, self.columns = categories, columns
+
+    def fit_transform(self, X):
+        return SCIData(X, columns=self.columns).categorize(self.categories)
 
 
 def justify(df, invalid_val=np.nan, axis=1, side="left"):
