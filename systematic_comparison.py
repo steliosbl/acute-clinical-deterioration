@@ -68,7 +68,7 @@ def study_grid_from_args(args, sci_train):
     estimators.update({_._name: [_] for _ in estimators["all"]})
 
     return study_grid(
-        estimators=estimators,
+        estimators=estimators[args["models"]],
         resamplers=[None, Resampler_RandomUnderSampler, Resampler_SMOTE],
         sci_train=sci_train,
     )
@@ -394,7 +394,7 @@ def run(args):
         construct_study(
             **_, **args, sci_train=sci_train_, sci_test=sci_test, n_trials=n_trials
         )
-        for _ in get_studies(sci_train, cli_model_arg=args["models"])
+        for _ in study_grid_from_args(args, sci_train)
     ]
 
     study_args = dict(
