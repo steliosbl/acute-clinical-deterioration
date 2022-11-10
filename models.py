@@ -315,7 +315,7 @@ class Estimator_LogisticRegression(Estimator):
     def suggest_parameters(cls, trial):
         suggestions = dict(
             # penalty=trial.suggest_categorical(f"{cls._name}__penalty", ["l2", "none"]),
-            C=trial.suggest_float(f"{cls._name}__C", 0.01, 10),
+            #  C=trial.suggest_float(f"{cls._name}__C", 0.01, 10),
             class_weight=trial.suggest_categorical(
                 f"{cls._name}__class_weight", [None, "balanced"]
             ),

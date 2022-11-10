@@ -35,7 +35,7 @@ from dataset import SCICategoriser
 from typing import Dict, Any, Iterable, Optional, Tuple, Callable
 
 
-def oneclasssplit(X_train, y_train, kf):
+def oneclass_split(X_train, y_train, kf):
     for train_index, test_index in kf.split(X_train, y_train):
         if type(y_train) == pd.Series:
             y_train = y_train.to_numpy()
@@ -49,7 +49,7 @@ def oneclasssplit(X_train, y_train, kf):
         yield train_index, test_index
 
 
-def get_studies(sci_train, study_grid=None, cli_model_arg=None):
+def study_grid_from_args(args, sci_train):
     estimators = dict(
         cpu=[
             Estimator_IsolationForest,
@@ -67,27 +67,47 @@ def get_studies(sci_train, study_grid=None, cli_model_arg=None):
     estimators["all"] = estimators["cpu"] + estimators["gpu"]
     estimators.update({_._name: [_] for _ in estimators["all"]})
 
-    if study_grid is None:
-        study_grid = dict(
-            estimator=estimators[cli_model_arg],
-            resampler=[None, Resampler_RandomUnderSampler, Resampler_SMOTE],
-            features=sci_train.feature_group_combinations,
+    return study_grid(
+        estimators=estimators,
+        resamplers=[None, Resampler_RandomUnderSampler, Resampler_SMOTE],
+        sci_train=sci_train,
+    )
+
+
+def study_grid(estimators, resamplers, sci_train):
+    oneclass_estimators, binary_estimators = (
+        [_ for _ in estimators if _._requirements["oneclass"]],
+        [_ for _ in estimators if not _._requirements["oneclass"]],
+    )
+    features = sci_train.feature_group_combinations
+    categorical_feature_groups = [
+        k for k, v in features.items() if (sci_train[v].dtypes == "category").all()
+    ]
+
+    r = []
+    for (estimator, resampler, feature_name) in itertools.product(
+        estimators, resamplers, features
+    ):
+        if estimator._requirements["oneclass"] and resampler is not None:
+            continue
+        if feature_name in categorical_feature_groups and resampler is not None:
+            continue
+        r.append(
+            dict(
+                estimator=estimator,
+                resampler=resampler,
+                feature_group=feature_name,
+                features=features[feature_name],
+            )
         )
 
-    k, v = zip(*study_grid.items())
-
-    r = [dict(zip(k, _)) for _ in itertools.product(*v)]
-    return [
-        _
-        for _ in r
-        if not (_["estimator"]._requirements["oneclass"] and _["resampler"] is not None)
-    ]
+    return r
 
 
 @dataclass
 class PipelineFactory:
     estimator: Estimator
-    resampler: Estimator
+    resampler: Optional[Resampler]
     X_train: SCIData
     y_train: pd.Series
 
@@ -117,7 +137,7 @@ class PipelineFactory:
 @dataclass
 class Objective:
     estimator: Estimator
-    resampler: Estimator
+    resampler: Optional[Resampler]
     pipeline_factory: PipelineFactory
     X_train: SCIData
     y_train: pd.Series
@@ -139,7 +159,7 @@ class Objective:
 
         cv = self.cv
         if self.estimator._requirements["oneclass"]:
-            cv = oneclasssplit(
+            cv = oneclass_split(
                 self.X_train,
                 self.y_train,
                 StratifiedKFold(n_splits=5, random_state=42, shuffle=True),
@@ -188,10 +208,11 @@ def evaluate_model(model, X_test, y_test, n_resamples):
 
 def construct_study(
     estimator: Estimator,
+    resampler: Optional[Resampler],
+    feature_group: str,
+    features: Iterable[str],
     sci_train: SCIData,
     sci_test: SCIData,
-    features: Tuple[str, Iterable[str]] = ("All", []),
-    resampler: Estimator = None,
     cv=5,
     scoring="average_precision",
     storage=None,
@@ -200,11 +221,11 @@ def construct_study(
     n_trials=100,
     **kwargs,
 ):
-    X_train, y_train, X_test, y_test = estimator.get_xy(
-        sci_train, sci_test, features[1]
-    )
+    X_train, y_train, X_test, y_test = estimator.get_xy(sci_train, sci_test, features)
 
-    name = f"{estimator._name}_{resampler._name if resampler else 'None'}_{features[0]}"
+    name = (
+        f"{estimator._name}_{resampler._name if resampler else 'None'}_{feature_group}"
+    )
     study = optuna.create_study(
         direction="maximize", study_name=name, storage=storage, load_if_exists=True
     )
@@ -259,7 +280,7 @@ def construct_study(
                 name=name,
                 estimator=estimator._name,
                 resampler=resampler._name if resampler else "None",
-                features=features[0],
+                features=feature_group,
             )
             | metrics
         )

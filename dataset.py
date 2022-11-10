@@ -1232,24 +1232,24 @@ class SCIData(pd.DataFrame):
             diagnoses,
         ) = self.feature_groups.values()
         r = self.feature_groups | dict(
-                news_scored_extended=news_extended + news_scores,
-                news_with_phenotype=news_extended + phenotype,
-                with_ae_notes=news_extended + phenotype + ae,
-                with_labs=news_extended + phenotype + labs,
-                with_notes_and_labs=news_extended + phenotype + ae + labs,
-                with_hospital=news_extended + phenotype + hospital,
-                with_notes_and_hospital=news_extended + phenotype + ae + hospital,
-                with_labs_and_hospital=news_extended + phenotype + labs + hospital,
-                with_notes_labs_and_hospital=news_extended
-                + ae
-                + phenotype
-                + labs
-                + hospital,
-                with_labs_and_diagnoses=news_extended + phenotype + labs + diagnoses,
-                all=news_extended + phenotype + ae + labs + hospital + diagnoses,
-            )
-        
-        return list(r.items())
+            news_scored_extended=news_extended + news_scores,
+            news_with_phenotype=news_extended + phenotype,
+            with_ae_notes=news_extended + phenotype + ae,
+            with_labs=news_extended + phenotype + labs,
+            with_notes_and_labs=news_extended + phenotype + ae + labs,
+            with_hospital=news_extended + phenotype + hospital,
+            with_notes_and_hospital=news_extended + phenotype + ae + hospital,
+            with_labs_and_hospital=news_extended + phenotype + labs + hospital,
+            with_notes_labs_and_hospital=news_extended
+            + ae
+            + phenotype
+            + labs
+            + hospital,
+            with_labs_and_diagnoses=news_extended + phenotype + labs + diagnoses,
+            all=news_extended + phenotype + ae + labs + hospital + diagnoses,
+        )
+
+        return r
 
 
 class SCICategoriser(BaseEstimator, TransformerMixin):
