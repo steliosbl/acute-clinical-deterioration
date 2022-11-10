@@ -399,7 +399,7 @@ class SCIData(pd.DataFrame):
         # r["CriticalCare"] = m.any(axis=1)
 
         r[col_name] = los_on_critical_admission <= (within or 999)
-        r[col_name].fillna(False, inplace=True)
+        r[col_name] = r[col_name].fillna(False)
 
         return SCIData(r)
 
@@ -820,7 +820,7 @@ class SCIData(pd.DataFrame):
         # Heart rate is 80
         for _ in SCICols.news_data_raw[:-2] + ["DiastolicBP"]:
             if _ in r.columns:
-                r[_].fillna(r[_].median(), inplace=True)
+                r[_] = r[_].fillna(r[_].median())
 
         static_fills = {
             **{col: 0 for col in SCICols.news_data_scored},
@@ -836,14 +836,14 @@ class SCIData(pd.DataFrame):
 
         for col, val in static_fills.items():
             if col in r.columns:
-                r[col].fillna(val, inplace=True)
+                r[col] = r[col].fillna(val)
 
         return SCIData(r)
 
     def impute_blood(self):
         r = self.copy()
         for _ in SCICols.blood:
-            r[_].fillna(r[_].median(), inplace=True)
+            r[_] = r[_].fillna(r[_].median)
 
         return SCIData(r)
 
@@ -1124,7 +1124,8 @@ class SCIData(pd.DataFrame):
 
     def fill_na(self):
         r = self.copy()
-        r.select_dtypes(include="number").fillna(-1, inplace=True)
+        num_cols = r.select_dtypes(include="number").columns
+        r.loc[:, num_cols] = r[num_cols].fillna(-1)
         # r.select_dtypes(include="object").fillna("NAN", inplace=True)
         for _ in r.select_dtypes(include="category").columns:
             r[_] = r[_].cat.add_categories("NAN").fillna("NAN")
