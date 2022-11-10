@@ -302,7 +302,9 @@ class Estimator_LogisticRegression(Estimator):
         scaling=True,
     )
 
-    _static_params = dict(max_iter=2000, solver="lbfgs", random_state=42, penalty=None)
+    _static_params = dict(
+        max_iter=2000, solver="lbfgs", random_state=42, penalty="none"
+    )
 
     _tuning_params_default = dict(C=5.9, class_weight="balanced")
 
@@ -312,7 +314,7 @@ class Estimator_LogisticRegression(Estimator):
     @classmethod
     def suggest_parameters(cls, trial):
         suggestions = dict(
-           # penalty=trial.suggest_categorical(f"{cls._name}__penalty", ["l2", "none"]),
+            # penalty=trial.suggest_categorical(f"{cls._name}__penalty", ["l2", "none"]),
             C=trial.suggest_float(f"{cls._name}__C", 0.01, 10),
             class_weight=trial.suggest_categorical(
                 f"{cls._name}__class_weight", [None, "balanced"]
@@ -321,13 +323,15 @@ class Estimator_LogisticRegression(Estimator):
 
         return cls.compile_parameters(suggestions)
 
+
 class Estimator_L1Regression(Estimator_LogisticRegression):
     _name = "L1Regression"
     _static_params = dict(max_iter=2000, solver="saga", random_state=42, penalty="l1")
 
+
 class Estimator_L2Regression(Estimator_LogisticRegression):
     _name = "L2Regression"
-    _static_params = dict(max_iter=2000, solver="lbgfs", random_state=42, penalty="l2")
+    _static_params = dict(max_iter=2000, solver="lbfgs", random_state=42, penalty="l2")
 
 
 class Estimator_RandomForest(Estimator):
