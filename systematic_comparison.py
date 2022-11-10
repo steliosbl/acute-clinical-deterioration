@@ -59,6 +59,8 @@ def get_studies(sci_train, study_grid=None, cli_model_arg=None):
             Estimator_XGBoost,
             Estimator_LinearSVM,
             Estimator_OneClassSVM,
+            Estimator_L1Regression,
+            Estimator_L2Regression,
         ],
         gpu=[Estimator_TabNet],
     )
