@@ -274,6 +274,7 @@ def construct_study(
                 except (
                     optuna.exceptions.StorageInternalError,
                     sqlalchemy.exc.OperationalError,
+                    AssertionError,
                 ):
                     print("################# CAUGHT DB ERROR #################")
                     pass
