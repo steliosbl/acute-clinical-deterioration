@@ -152,8 +152,8 @@ def run(args):
             sci_test_idx=sci_test_idx,
             n_trials=n_trials,
         )
-        for _ in study_grid_from_args(args, sci_train)[:2]
-        for threshold in range(1, 3)
+        for _ in study_grid_from_args(args, sci_train)
+        for threshold in range(1, 31)
     ]
 
     study_args = dict(
