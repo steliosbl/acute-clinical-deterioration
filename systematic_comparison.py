@@ -49,7 +49,7 @@ def oneclass_split(X_train, y_train, kf):
         yield train_index, test_index
 
 
-def study_grid_from_args(args, sci_train):
+def study_grid_from_args(args, scii):
     estimators = dict(
         cpu=[
             Estimator_IsolationForest,
@@ -67,26 +67,33 @@ def study_grid_from_args(args, sci_train):
     estimators["all"] = estimators["cpu"] + estimators["gpu"]
     estimators.update({_._name: [_] for _ in estimators["all"]})
 
-    return study_grid(
-        estimators=estimators[args["models"]],
-        resamplers=[None, Resampler_RandomUnderSampler, Resampler_SMOTE],
-        sci_train=sci_train,
-    )
+    r = dict(estimators=estimators[args["models"]], scii=scii)
+    if args["time_thresholds"]:
+        r = dict(resamplers=[None], outcome_thresholds=list(range(1, 3))) | r
+    else:
+        r = (
+            dict(
+                resamplers=[None, Resampler_RandomUnderSampler, Resampler_SMOTE],
+                outcome_thresholds=[1],
+            )
+            | r
+        )
+    return study_grid(**r)
 
 
-def study_grid(estimators, resamplers, sci_train):
+def study_grid(estimators, resamplers, scii, outcome_thresholds):
     oneclass_estimators, binary_estimators = (
         [_ for _ in estimators if _._requirements["oneclass"]],
         [_ for _ in estimators if not _._requirements["oneclass"]],
     )
-    features = sci_train.feature_group_combinations
+    features = scii.feature_group_combinations
     categorical_feature_groups = [
-        k for k, v in features.items() if (sci_train[v].dtypes == "category").all()
+        k for k, v in features.items() if (scii[v].dtypes == "category").all()
     ]
 
     r = []
-    for (estimator, resampler, feature_name) in itertools.product(
-        estimators, resamplers, features
+    for (estimator, resampler, feature_name, outcome_threshold) in itertools.product(
+        estimators, resamplers, features, outcome_thresholds
     ):
         if estimator._requirements["oneclass"] and resampler is not None:
             continue
@@ -98,6 +105,7 @@ def study_grid(estimators, resamplers, sci_train):
                 resampler=resampler,
                 feature_group=feature_name,
                 features=features[feature_name],
+                outcome_within=outcome_threshold,
             )
         )
 
@@ -206,13 +214,30 @@ def evaluate_model(model, X_test, y_test, n_resamples):
     return metrics, y_pred_proba
 
 
+def get_xy(scii, estimator, features, outcome_within=1):
+    sci_args = dict(
+        x=features,
+        imputation=estimator._requirements["imputation"],
+        onehot_encoding=estimator._requirements["onehot"],
+        ordinal_encoding=estimator._requirements["ordinal"],
+        fillna=estimator._requirements["fillna"],
+        outcome_within=outcome_within,
+    )
+
+    X, y = scii.xy(**sci_args)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.33, random_state=42, shuffle=False
+    )
+    return SCIData(X_train), SCIData(X_test), y_train, y_test
+
+
 def construct_study(
     estimator: Estimator,
     resampler: Optional[Resampler],
+    scii: SCIData,
     feature_group: str,
     features: Iterable[str],
-    sci_train: SCIData,
-    sci_test: SCIData,
+    outcome_within: int,
     cv=5,
     scoring="average_precision",
     storage=None,
@@ -221,11 +246,8 @@ def construct_study(
     n_trials=100,
     **kwargs,
 ):
-    X_train, y_train, X_test, y_test = estimator.get_xy(sci_train, sci_test, features)
-
-    name = (
-        f"{estimator._name}_{resampler._name if resampler else 'None'}_{feature_group}"
-    )
+    X_train, X_test, y_train, y_test = get_xy(scii, estimator, features, outcome_within)
+    name = f"{estimator._name}_{resampler._name if resampler else 'None'}_Within-{outcome_within}_{feature_group}"
     study = optuna.create_study(
         direction="maximize", study_name=name, storage=storage, load_if_exists=True
     )
@@ -281,6 +303,7 @@ def construct_study(
                 estimator=estimator._name,
                 resampler=resampler._name if resampler else "None",
                 features=feature_group,
+                outcome_within=outcome_within,
             )
             | metrics
         )
@@ -327,6 +350,11 @@ parser.add_argument(
     action="store_true",
 )
 parser.add_argument(
+    "--time_thresholds",
+    help="Whether to run the time threshold test",
+    action="store_true",
+)
+parser.add_argument(
     "-t", "--trials", help="Number of trials. Default=1000", type=int, default=1000
 )
 parser.add_argument(
@@ -354,22 +382,9 @@ def run(args):
             SCIData.quickload("data/sci_processed.h5").sort_values("AdmissionDateTime")
         )
         .mandate(SCICols.news_data_raw)
-        .derive_critical_event(within=1, return_subcols=True)
         .augment_shmi(onehot=True)
-        .omit_redundant()
         .derive_ae_diagnosis_stems(onehot=False)
-        .categorize()
     )
-
-    sci_train, sci_test, _, y_test_mortality, _, y_test_criticalcare = train_test_split(
-        scii,
-        scii.DiedWithinThreshold,
-        scii.CriticalCare,
-        test_size=0.33,
-        random_state=42,
-        shuffle=False,
-    )
-    sci_train, sci_test = SCIData(sci_train), SCIData(sci_test)
 
     if args["verbose"]:
         optuna.logging.set_verbosity(optuna.logging.INFO)
@@ -379,9 +394,8 @@ def run(args):
         except FileExistsError:
             pass
 
-    sci_train_ = sci_train
     if args["debug"]:
-        sci_train_ = SCIData(sci_train.sample(1000))
+        scii = SCIData(scii.sample(10000))
 
     if args["storage"] is not None:
         args["storage"] = optuna.storages.RDBStorage(
@@ -391,10 +405,8 @@ def run(args):
     n_trials = args["trials"] if not args["debug"] else 2
 
     studies = [
-        construct_study(
-            **_, **args, sci_train=sci_train_, sci_test=sci_test, n_trials=n_trials
-        )
-        for _ in study_grid_from_args(args, sci_train)
+        construct_study(**_, **args, scii=scii, n_trials=n_trials)
+        for _ in study_grid_from_args(args, scii)
     ]
 
     study_args = dict(

@@ -69,23 +69,6 @@ class Estimator:
         return {f"{cls._name}__{key}": value for key, value in cls._fit_params.items()}
 
     @classmethod
-    def get_xy(cls, sci_train, sci_test=None, features=[]):
-        sci_args = dict(
-            x=features,
-            imputation=cls._requirements["imputation"],
-            onehot_encoding=cls._requirements["onehot"],
-            ordinal_encoding=cls._requirements["ordinal"],
-            fillna=cls._requirements["fillna"],
-        )
-
-        (X_train, y_train) = sci_train.xy(**sci_args)
-        if sci_test is None:
-            return (X_train, y_train)
-
-        (X_test, y_test) = sci_test.xy(**sci_args)
-        return (X_train, y_train, X_test, y_test)
-
-    @classmethod
     def explain_calibrated(cls, model, X_train, X_test):
         ordinal_encode = (
             not cls._requirements["onehot"] and not cls._requirements["ordinal"]

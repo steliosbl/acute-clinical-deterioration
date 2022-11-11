@@ -345,7 +345,9 @@ class SCIData(pd.DataFrame):
         r["Mortality"] = m.dot(m.columns)
         return SCIData(r)
 
-    def derive_death_within(self, within=1, col_name="DiedWithinThreshold"):
+    def derive_death_within(
+        self, within=1, col_name="DiedWithinThreshold", return_series=False
+    ):
         """Determines the patients' mortality outcome.
         :param within: Time since admission to consider a death. E.g., 1.0 means died within 24 hours, otherwise lived past 24 hours
         :return: New SCIData instance with the new feature added
@@ -353,9 +355,14 @@ class SCIData(pd.DataFrame):
         r = self.copy()
 
         if within is not None:
-            r[col_name] = r.DiedDuringStay & (r.TotalLOS <= within)
+            col = r.DiedDuringStay & (r.TotalLOS <= within)
         else:
-            r[col_name] = r.DiedDuringStay
+            col = r.DiedDuringStay
+
+        if return_series:
+            return col
+
+        r[col_name]
 
         return SCIData(r)
 
@@ -371,7 +378,11 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def derive_critical_care(
-        self, critical_wards=["CCU", "HH1M"], within=1, col_name="CriticalCare",
+        self,
+        critical_wards=["CCU", "HH1M"],
+        within=1,
+        col_name="CriticalCare",
+        return_series=False,
     ):
         """Determines admission to critical care at any point during the spell as indicated by admission to specified wards
         :param critical_wards: The wards to search for. By default, ['CCU', 'HH1M']
@@ -400,6 +411,9 @@ class SCIData(pd.DataFrame):
 
         r[col_name] = los_on_critical_admission <= (within or 999)
         r[col_name] = r[col_name].fillna(False)
+
+        if return_series:
+            return r[col_name].copy()
 
         return SCIData(r)
 
@@ -934,16 +948,22 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def derive_critical_event(
-        self, within=None, col_name="CriticalEvent", return_subcols=False
+        self,
+        within=None,
+        col_name="CriticalEvent",
+        return_subcols=False,
+        return_series=False,
     ):
         """Determines the patients' critical event outcome.
         :param within: Time since admission to consider a critical event. E.g., 1.0 means it occurred within 24 hours, otherwise lived past 24 hours
         :return: New SCIData instance with the new feature added
         """
-        temp = self.derive_death_within(within=within).derive_critical_care(
-            within=within
-        )
-        col = temp.DiedWithinThreshold | temp.CriticalCare
+        mortality = self.derive_death_within(within=within, return_series=True)
+        critical = self.derive_critical_care(within=within, return_series=True)
+        col = mortality | critical
+
+        if return_series:
+            return col
 
         r = self.copy()
         r[col_name] = col
@@ -1124,12 +1144,9 @@ class SCIData(pd.DataFrame):
 
     def fill_na(self):
         r = self.copy()
-        num_cols = r.select_dtypes(include="number").columns
-        r.loc[:, num_cols] = r[num_cols].fillna(-1)
-        # r.select_dtypes(include="object").fillna("NAN", inplace=True)
         for _ in r.select_dtypes(include="category").columns:
             r[_] = r[_].cat.add_categories("NAN").fillna("NAN")
-
+        r = r.fillna(-1)
         return SCIData(r)
 
     def unfill_na(self):
@@ -1147,22 +1164,24 @@ class SCIData(pd.DataFrame):
         fillna=False,
         ordinal_encoding=False,
         onehot_encoding=False,
-        outcome="CriticalEvent",
+        outcome_within=1,
         imputation=False,
     ):
         X = self.impute_news().impute_blood() if imputation else self
-
+        y = self.derive_critical_event(within=outcome_within, return_series=True)
         X = (
             SCIData(self[x])
             if len(x)
             else self.drop(
-                SCICols.outcome + SCICols.mortality + [outcome], axis=1, errors="ignore"
-            )
+                SCICols.outcome + SCICols.mortality + ["CriticalEvent"],
+                axis=1,
+                errors="ignore",
+            ).omit_redundant()
         )
 
         if dtype is not None:
             X = X.astype(dtype)
-        y = self[outcome].copy()
+
         if dropna:
             X = X.dropna(how="any")
             y = y[X.index]
