@@ -963,13 +963,15 @@ class SCIData(pd.DataFrame):
         col = mortality | critical
 
         if return_series:
+            if return_subcols:
+                return col, mortality, critical
             return col
 
         r = self.copy()
         r[col_name] = col
         if return_subcols:
-            r["DiedWithinThreshold"] = temp.DiedWithinThreshold
-            r["CriticalCare"] = temp.CriticalCare
+            r["DiedWithinThreshold"] = mortality
+            r["CriticalCare"] = critical
 
         return SCIData(r)
 

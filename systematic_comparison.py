@@ -69,7 +69,7 @@ def study_grid_from_args(args, scii):
 
     r = dict(estimators=estimators[args["models"]], scii=scii)
     if args["time_thresholds"]:
-        r = dict(resamplers=[None], outcome_thresholds=list(range(1, 3))) | r
+        r = dict(resamplers=[None], outcome_thresholds=list(range(1, 31))) | r
     else:
         r = (
             dict(
