@@ -211,7 +211,7 @@ def evaluate_model(model, X_test, y_test, n_resamples):
 
     metrics = get_metrics(y_test, y_pred, y_pred_proba, n_resamples)
 
-    return metrics, pd.Series(y_pred_proba, index=y_test.index)
+    return metrics, y_pred_proba
 
 
 def get_xy(scii, estimator, features, outcome_within=1):
@@ -311,7 +311,7 @@ def construct_study(
             | metrics
         )
 
-        return metrics, (name, y_pred_proba)
+        return metrics, pd.Series(y_pred_proba, index=y_test.index, name=name)
 
     def call(model_persistence_path=None, n_resamples=99, **kwargs):
         with warnings.catch_warnings():
