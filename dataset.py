@@ -1146,14 +1146,16 @@ class SCIData(pd.DataFrame):
 
     def fill_na(self):
         r = self.copy()
-        for _ in r.select_dtypes(include="category").columns:
+        cat_cols = r.select_dtypes("category").columns
+        other_cols = list(set(r.columns) - set(cat_cols))
+        for _ in cat_cols:
             r[_] = r[_].cat.add_categories("NAN").fillna("NAN")
-        r = r.fillna(-1)
+        r[other_cols] = r[other_cols].fillna(-1)
         return SCIData(r)
 
     def unfill_na(self):
         r = self.replace(-1, np.nan)
-        for _ in r.select_dtypes(include="category").columns:
+        for _ in r.select_dtypes("category").columns:
             if "NAN" in r[_].cat.categories:
                 r[_] = r[_].cat.remove_categories("NAN")
         return r
@@ -1188,10 +1190,10 @@ class SCIData(pd.DataFrame):
             X = X.dropna(how="any")
             y = y[X.index]
 
+        X = SCIData(X).categorize()
+
         if fillna:
             X = SCIData(X).fill_na()
-
-        X = SCIData(X).categorize()
 
         if ordinal_encoding:
             X = SCIData(X).ordinal_encode_categories()

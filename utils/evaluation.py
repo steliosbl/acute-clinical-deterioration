@@ -177,19 +177,21 @@ def plot_alert_rate(
         plt.rc("axes", titlesize=12)
 
 
-def plot_calibrated_regression_coefficients(
-    model, columns, topn=60, figsize=(8, 12), save=None
-):
-    fig, ax = plt.subplots(1, 1, figsize=figsize)
-    df = pd.DataFrame(
-        zip(
-            np.array(
-                [_.base_estimator.coef_[0] for _ in model.calibrated_classifiers_]
-            ).mean(axis=0),
-            columns,
-        ),
+def get_calibrated_regression_coefficients(model, columns, pipeline_key=None):
+    models = [_.base_estimator for _ in model.calibrated_classifiers_]
+    if pipeline_key:
+        models = [_[pipeline_key] for _ in models]
+
+    return pd.DataFrame(
+        zip(np.array([_.coef_[0] for _ in models]).mean(axis=0), columns,),
         columns=["Coefficient", "Feature"],
     )
+
+
+def regression_coefficient_sorted_barplot(
+    df, topn=60, figsize=(8, 12), title=None, save=None
+):
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
     df = df.loc[
         df.Coefficient.apply(abs).sort_values(ascending=False).head(topn).index
     ].sort_values("Coefficient", ascending=False)
@@ -201,8 +203,17 @@ def plot_calibrated_regression_coefficients(
         ax=ax,
     )
 
+    ax.set_title(title)
+
     if save:
         plt.savefig(save, bbox_inches="tight", dpi=200)
+
+
+def plot_calibrated_regression_coefficients(
+    model, columns, topn=60, figsize=(8, 12), pipeline_key=None, save=None,
+):
+    df = get_calibrated_regression_coefficients(model, columns, pipeline_key)
+    regression_coefficient_sorted_barplot(df, save)
 
 
 def plot_roc_curves(

@@ -211,7 +211,7 @@ def evaluate_model(model, X_test, y_test, n_resamples):
 
     metrics = get_metrics(y_test, y_pred, y_pred_proba, n_resamples)
 
-    return metrics, y_pred_proba
+    return metrics, pd.Series(y_pred_proba, index=y_test.index)
 
 
 def get_xy(scii, estimator, features, outcome_within=1):
@@ -280,20 +280,23 @@ def construct_study(
             y = y_train[y_train.eq(0)]
 
         explanations = []
+        explain = estimator._requirements["explanation"] and (
+            model_persistence_path is not None
+        )
         if estimator._requirements["calibration"]:
             model = CalibratedClassifierCV(
                 pipeline_factory(**params), cv=cv, method="isotonic", n_jobs=cv_jobs,
             ).fit(X, y)
-            if estimator._requirements["explanation"]:
+            if explain:
                 explanations = estimator.explain_calibrated(model, X, X_test)
         else:
             model = pipeline_factory(**params).fit(X, y)
-            if estimator._requirements["explanation"]:
+            if explain:
                 explanations = estimator.explain(model[estimator._name], X, X_test)
 
         if model_persistence_path is not None:
             with open(f"{model_persistence_path}/{name}.bin", "wb") as file:
-                pickle.dump((model, explanations), file)
+                pickle.dump((model, explanations, X_train.columns), file)
 
         metrics, y_pred_proba = evaluate_model(model, X_test, y_test, n_resamples)
 

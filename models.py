@@ -362,18 +362,20 @@ class Estimator_RandomForest(Estimator):
 
 class IsolationForestWrapper(IsolationForest):
     """ Wraps the scikit-learn Isolation Forest model to adapt it to our test harness. This is because the original gives non-standard outputs when predicting """
+
     def predict(self, X):
         return np.fromiter(map({-1: 0, 1: 1}.get, super().predict(X)), dtype=int)
 
     def decision_function(self, X):
         return -super().decision_function(X)
+
 
 class OneClassSVMWrapper(SGDOneClassSVM):
     def predict(self, X):
         return np.fromiter(map({-1: 0, 1: 1}.get, super().predict(X)), dtype=int)
 
     def decision_function(self, X):
-        return -super().decision_function(X)
+        return super().decision_function(X)
 
 
 class Estimator_IsolationForest(Estimator):
