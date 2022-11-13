@@ -213,7 +213,7 @@ def plot_calibrated_regression_coefficients(
     model, columns, topn=60, figsize=(8, 12), pipeline_key=None, save=None,
 ):
     df = get_calibrated_regression_coefficients(model, columns, pipeline_key)
-    regression_coefficient_sorted_barplot(df, save)
+    regression_coefficient_sorted_barplot(df, topn=topn, save=save)
 
 
 def plot_roc_curves(
@@ -285,6 +285,7 @@ def plot_pr_curves(
     ax=None,
     smoothing=True,
     save_format="png",
+    palette=sns.color_palette("deep"),
 ):
     no_ax = ax is None
     if no_ax:
@@ -297,7 +298,7 @@ def plot_pr_curves(
 
     for idx, (modelkey, y_pred_proba) in enumerate(y_preds.items()):
         linestyle = "--" if modelkey == baseline_key else "-"
-        color = "tomato" if modelkey == baseline_key else sns.color_palette()[idx]
+        color = "tomato" if modelkey == baseline_key else palette[idx]
         if smoothing:
             precision, recall, _ = precision_recall_curve(y_true, y_pred_proba)
             ap = average_precision_score(y_true, y_pred_proba)
@@ -322,9 +323,10 @@ def plot_pr_curves(
             )
 
     ax.legend(loc="upper right")
+    # sns.move_legend(ax, "center left", bbox_to_anchor=(1, 0.5))
     ax.set_title("Precision-Recall")
-    ax.set_xlabel("Sensitivity (a.k.a. Recall)")
-    ax.set_ylabel("Positive predictive value (a.k.a. Precision)")
+    ax.set_xlabel("Sensitivity (Recall)")
+    ax.set_ylabel("Positive Predictive Value (Precision)")
     if save:
         plt.savefig(
             save,

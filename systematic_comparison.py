@@ -67,7 +67,12 @@ def study_grid_from_args(args, scii):
     estimators["all"] = estimators["cpu"] + estimators["gpu"]
     estimators.update({_._name: [_] for _ in estimators["all"]})
 
-    r = dict(estimators=estimators[args["models"]], scii=scii)
+    features = scii.feature_group_combinations
+    if args['select_features']:
+        select = ['news', 'news_with_phenotype', 'with_labs', 'with_notes_and_labs', 'with_notes_labs_and_hospital']
+        features = {_:features[_] for _ in select}
+
+    r = dict(estimators=estimators[args["models"]], features=features, scii=scii)
     if args["time_thresholds"]:
         r = dict(resamplers=[None], outcome_thresholds=list(range(1, 31))) | r
     else:
@@ -78,15 +83,17 @@ def study_grid_from_args(args, scii):
             )
             | r
         )
+        
     return study_grid(**r)
 
 
-def study_grid(estimators, resamplers, scii, outcome_thresholds):
+def study_grid(estimators, resamplers, features, scii, outcome_thresholds):
     oneclass_estimators, binary_estimators = (
         [_ for _ in estimators if _._requirements["oneclass"]],
         [_ for _ in estimators if not _._requirements["oneclass"]],
     )
-    features = scii.feature_group_combinations
+    if len(features)==0:
+        features = scii.feature_group_combinations
     categorical_feature_groups = [
         k for k, v in features.items() if (scii[v].dtypes == "category").all()
     ]
@@ -376,7 +383,7 @@ parser.add_argument(
     "--n_resamples", help="Number of resamples for bootstrapping metrics", default=999
 )
 parser.add_argument("-v", "--verbose", help="Optuna verbosity", action="store_true")
-
+parser.add_argument("--select_features", help="Limit feature groups", action='store_true')
 
 def run(args):
     args = vars(args)
@@ -409,7 +416,7 @@ def run(args):
 
     studies = [
         construct_study(**_, **args, scii=scii, n_trials=n_trials)
-        for _ in study_grid_from_args(args, scii)
+        for _ in study_grid_from_args(args, scii.omit_redundant().categorize())
     ]
 
     study_args = dict(
