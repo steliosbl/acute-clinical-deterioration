@@ -1170,9 +1170,16 @@ class SCIData(pd.DataFrame):
         onehot_encoding=False,
         outcome_within=1,
         imputation=False,
+        outcome="CriticalEvent",
     ):
         X = self.impute_news().impute_blood() if imputation else self
-        y = self.derive_critical_event(within=outcome_within, return_series=True)
+        if outcome == "CriticalCare":
+            y = self.derive_critical_care(within=outcome_within, return_series=True)
+        elif outcome == "Mortality":
+            y = self.derive_death_within(within=outcome_within, return_series=True)
+        else:
+            y = self.derive_critical_event(within=outcome_within, return_series=True)
+
         X = (
             SCIData(self[x])
             if len(x)
@@ -1256,15 +1263,29 @@ class SCIData(pd.DataFrame):
             diagnoses,
         ) = self.feature_groups.values()
         r = self.feature_groups | dict(
-            news_scored_extended=news_extended + news_scores,
+            news_scores_extended=news_extended + news_scores,
             news_with_phenotype=news + news_extended + phenotype,
+            news_scores_with_phenotype=news_scores + news_extended + phenotype,
             with_ae_notes=news + news_extended + phenotype + ae,
+            scores_with_ae_notes=news_scores + news_extended + phenotype + ae,
             with_labs=news + news_extended + phenotype + labs,
+            scores_with_labs=news_scores + news_extended + phenotype + labs,
             with_notes_and_labs=news + news_extended + phenotype + ae + labs,
+            scores_with_notes_and_labs=news_scores
+            + news_extended
+            + phenotype
+            + ae
+            + labs,
             with_hospital=news + news_extended + phenotype + hospital,
             #   with_notes_and_hospital=news+news_extended + phenotype + ae + hospital,
             #  with_labs_and_hospital=news+news_extended + phenotype + labs + hospital,
             with_notes_labs_and_hospital=news
+            + news_extended
+            + ae
+            + phenotype
+            + labs
+            + hospital,
+            scores_with_notes_labs_and_hospital=news_scores
             + news_extended
             + ae
             + phenotype
@@ -1760,3 +1781,32 @@ class SCICols:
         "CriticalEvent": "i",
     }
 
+    pretty_print_columns = {
+        "Respiration_rate": "Respiration Rate",
+        "O2_saturation": "SpO2",
+        "Temperature": "Temperature",
+        "SystolicBP": "Systolic BP",
+        "HeartRate": "Pulse",
+        "AVCPU_Alert": "Alert (AVCPU)",
+        "AssistedBreathing": "Assisted Breathing",
+        "VomitingSinceLastRound": "Vomiting",
+        "DiastolicBP": "Diastolic BP",
+        "LyingDown": "Lying Down",
+        "Pain": "Pain",
+        "Oxygen_flow_rate": "FiO2",
+        "Nausea": "Nausea",
+        "BreathingDevice": "Breathing Device",
+        "AandEPresentingComplaint": "PresentingComplaint",
+        "AandEMainDiagnosis": "A&E Diagnosis",
+        "Female": "Female",
+        "Age": "Age",
+        "Haemoglobin": "Haemoglobin",
+        "Urea_serum": "Urea",
+        "Sodium_serum": "Sodium",
+        "Potassium_serum": "Potassium",
+        "Creatinine": "Creatinine",
+        "AdmissionMethodDescription": "Admission Pathway",
+        "AdmissionSpecialty": "Admission Specialty",
+        "SentToSDEC": "Sent To SDEC",
+        "Readmission": "Readmission",
+    }

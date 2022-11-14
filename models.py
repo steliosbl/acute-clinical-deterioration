@@ -24,6 +24,8 @@ from dataset import SCIData, SCICols
 
 from utils.shaputils import group_explanations_by_categorical
 
+from joblib import Parallel, delayed
+
 
 # try:
 #     from sklearnex import patch_sklearn
@@ -61,26 +63,56 @@ class Estimator:
         }
 
     @classmethod
-    def factory(cls):
-        return cls._estimator(**cls._static_params)
+    def factory(cls, **kwargs):
+        return cls._estimator(**(cls._static_params | kwargs))
 
     @classmethod
     def fit_params(cls, X_train, y_train):
         return {f"{cls._name}__{key}": value for key, value in cls._fit_params.items()}
 
     @classmethod
-    def explain_calibrated(cls, model, X_train, X_test):
+    def explain_calibrated(cls, model, X_train, X_test, cv_jobs=1):
         ordinal_encode = (
             not cls._requirements["onehot"] and not cls._requirements["ordinal"]
         )
         X = X_test.ordinal_encode_categories() if ordinal_encode else X_test
+        if cls._requirements["scaling"]:
+            X_trains, X_tests = (
+                [
+                    _.base_estimator["Scaling"].fit_transform(X_train)
+                    for _ in model.calibrated_classifiers_
+                ],
+                [
+                    _.base_estimator["Scaling"].fit_transform(X)
+                    for _ in model.calibrated_classifiers_
+                ],
+            )
+        else:
+            X_trains, X_tests = (
+                [X_train for _ in model.calibrated_classifiers_],
+                [X for _ in model.calibrated_classifiers_],
+            )
 
-        explainers = [
-            cls._explainer(
-                _.base_estimator[cls._name], masker=X_train, **cls._explainer_args
-            )(X)
-            for _ in model.calibrated_classifiers_
-        ]
+        if cv_jobs > 1:
+            explainers = Parallel(n_jobs=cv_jobs, verbose=10)(
+                delayed(
+                    cls._explainer(
+                        _.base_estimator[cls._name],
+                        masker=X_trains[i],
+                        **cls._explainer_args,
+                    )
+                )(X_tests[i])
+                for i, _ in enumerate(model.calibrated_classifiers_)
+            )
+        else:
+            explainers = [
+                cls._explainer(
+                    _.base_estimator[cls._name],
+                    masker=X_trains[i],
+                    **cls._explainer_args,
+                )(X_tests[i])
+                for i, _ in enumerate(model.calibrated_classifiers_)
+            ]
 
         shap_values = shap.Explanation(
             base_values=np.array([_.base_values for _ in explainers]).mean(axis=0),
@@ -311,10 +343,52 @@ class Estimator_L1Regression(Estimator_LogisticRegression):
     _name = "L1Regression"
     _static_params = dict(max_iter=2000, solver="saga", random_state=42, penalty="l1")
 
+    @classmethod
+    def suggest_parameters(cls, trial):
+        suggestions = dict(
+            C=trial.suggest_float(f"{cls._name}__C", 0.01, 10),
+            class_weight=trial.suggest_categorical(
+                f"{cls._name}__class_weight", [None, "balanced"]
+            ),
+        )
+
+        return cls.compile_parameters(suggestions)
+
+
+class Estimator_ElasticNetRegression(Estimator_LogisticRegression):
+    _name = "ElasticNetRegression"
+    _static_params = dict(
+        max_iter=2000, solver="saga", random_state=42, penalty="elasticnet"
+    )
+    _tuning_params_default = dict(C=5.9, l1_ratio=0.5, class_weight="balanced")
+
+    @classmethod
+    def suggest_parameters(cls, trial):
+        suggestions = dict(
+            C=trial.suggest_float(f"{cls._name}__C", 0.01, 10),
+            l1_ratio=trial.suggest_float(f"{cls._name}__l1_ratio", 0.01, 0.99),
+            class_weight=trial.suggest_categorical(
+                f"{cls._name}__class_weight", [None, "balanced"]
+            ),
+        )
+
+        return cls.compile_parameters(suggestions)
+
 
 class Estimator_L2Regression(Estimator_LogisticRegression):
     _name = "L2Regression"
     _static_params = dict(max_iter=2000, solver="lbfgs", random_state=42, penalty="l2")
+
+    @classmethod
+    def suggest_parameters(cls, trial):
+        suggestions = dict(
+            C=trial.suggest_float(f"{cls._name}__C", 0.01, 10),
+            class_weight=trial.suggest_categorical(
+                f"{cls._name}__class_weight", [None, "balanced"]
+            ),
+        )
+
+        return cls.compile_parameters(suggestions)
 
 
 class Estimator_RandomForest(Estimator):
@@ -386,11 +460,13 @@ class Estimator_IsolationForest(Estimator):
         ordinal=False,
         imputation=True,
         fillna=True,
-        oneclass=True,
+        oneclass=False,
         calibration=False,
         explanation=False,
         scaling=False,
     )
+
+    _static_params = dict(contamination="auto")
 
     _tuning_params_default = dict(
         n_estimators=140,
@@ -407,9 +483,6 @@ class Estimator_IsolationForest(Estimator):
         suggestions = dict(
             n_estimators=trial.suggest_int(f"{cls._name}__n_estimators", 1, 200),
             max_samples=trial.suggest_float(f"{cls._name}__max_samples", 0.0, 1.0),
-            contamination=trial.suggest_float(
-                f"{cls._name}__contamination", 1e-6, 1e-1
-            ),
             max_features=trial.suggest_float(f"{cls._name}__max_features", 0.0, 1.0),
             bootstrap=trial.suggest_categorical(
                 f"{cls._name}__bootstrap", [True, False]
@@ -506,7 +579,7 @@ class Estimator_OneClassSVM(Estimator):
         scaling=True,
     )
 
-    _static_params = dict(max_iter=2000, random_state=42, learning_rate="optimal")
+    _static_params = dict(max_iter=20000, random_state=42, learning_rate="optimal")
 
     _tuning_params_default = dict(nu=0.5,)
 
@@ -561,7 +634,7 @@ class Estimator_TabNet(Estimator):
             dimensions=True
         )
 
-    def factory(self):
+    def factory(self,):
         return self._estimator(
             cat_idxs=self._categorical_idxs,
             cat_dims=[

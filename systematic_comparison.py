@@ -68,9 +68,20 @@ def study_grid_from_args(args, scii):
     estimators.update({_._name: [_] for _ in estimators["all"]})
 
     features = scii.feature_group_combinations
-    if args['select_features']:
-        select = ['news', 'news_with_phenotype', 'with_labs', 'with_notes_and_labs', 'with_notes_labs_and_hospital']
-        features = {_:features[_] for _ in select}
+    if args["select_features"]:
+        select = [
+            "news",
+            "news_scores",
+            "news_with_phenotype",
+            "news_scores_with_phenotype",
+            "with_labs",
+            "scores_with_labs",
+            "with_notes_and_labs",
+            "scores_with_notes_and_labs",
+            "with_notes_labs_and_hospital",
+            "scores_with_notes_labs_and_hospital"
+        ]
+        features = {_: features[_] for _ in select}
 
     r = dict(estimators=estimators[args["models"]], features=features, scii=scii)
     if args["time_thresholds"]:
@@ -83,7 +94,7 @@ def study_grid_from_args(args, scii):
             )
             | r
         )
-        
+
     return study_grid(**r)
 
 
@@ -92,7 +103,7 @@ def study_grid(estimators, resamplers, features, scii, outcome_thresholds):
         [_ for _ in estimators if _._requirements["oneclass"]],
         [_ for _ in estimators if not _._requirements["oneclass"]],
     )
-    if len(features)==0:
+    if len(features) == 0:
         features = scii.feature_group_combinations
     categorical_feature_groups = [
         k for k, v in features.items() if (scii[v].dtypes == "category").all()
@@ -221,7 +232,7 @@ def evaluate_model(model, X_test, y_test, n_resamples):
     return metrics, y_pred_proba
 
 
-def get_xy(scii, estimator, features, outcome_within=1):
+def get_xy(scii, estimator, features, outcome_within=1, outcome='CriticalEvent'):
     sci_args = dict(
         x=features,
         imputation=estimator._requirements["imputation"],
@@ -229,6 +240,7 @@ def get_xy(scii, estimator, features, outcome_within=1):
         ordinal_encoding=estimator._requirements["ordinal"],
         fillna=estimator._requirements["fillna"],
         outcome_within=outcome_within,
+        outcome=outcome
     )
 
     X, y = scii.xy(**sci_args)
@@ -251,9 +263,10 @@ def construct_study(
     model_persistence_path=None,
     cv_jobs=1,
     n_trials=100,
+    outcome='CriticalEvent',
     **kwargs,
 ):
-    X_train, X_test, y_train, y_test = get_xy(scii, estimator, features, outcome_within)
+    X_train, X_test, y_train, y_test = get_xy(scii, estimator, features, outcome_within, outcome)
     name = f"{estimator._name}_{resampler._name if resampler else 'None'}_Within-{outcome_within}_{feature_group}"
     study = optuna.create_study(
         direction="maximize", study_name=name, storage=storage, load_if_exists=True
@@ -295,7 +308,7 @@ def construct_study(
                 pipeline_factory(**params), cv=cv, method="isotonic", n_jobs=cv_jobs,
             ).fit(X, y)
             if explain:
-                explanations = estimator.explain_calibrated(model, X, X_test)
+                explanations = estimator.explain_calibrated(model, X, X_test, cv_jobs=cv_jobs)
         else:
             model = pipeline_factory(**params).fit(X, y)
             if explain:
@@ -303,7 +316,7 @@ def construct_study(
 
         if model_persistence_path is not None:
             with open(f"{model_persistence_path}/{name}.bin", "wb") as file:
-                pickle.dump((model, explanations, X_train.columns), file)
+                pickle.dump((model, explanations), file)
 
         metrics, y_pred_proba = evaluate_model(model, X_test, y_test, n_resamples)
 
@@ -383,7 +396,13 @@ parser.add_argument(
     "--n_resamples", help="Number of resamples for bootstrapping metrics", default=999
 )
 parser.add_argument("-v", "--verbose", help="Optuna verbosity", action="store_true")
-parser.add_argument("--select_features", help="Limit feature groups", action='store_true')
+parser.add_argument(
+    "--select_features", help="Limit feature groups", action="store_true"
+)
+parser.add_argument(
+    "--outcome", help='The target label', default='CriticalEvent'
+)
+
 
 def run(args):
     args = vars(args)
@@ -438,7 +457,7 @@ def run(args):
 
     metrics, y_preds = list(zip(*results))
     pd.DataFrame(metrics).to_hdf(args["output"], "metrics")
-    pd.DataFrame(dict(y_preds)).to_hdf(args["output"], "y_preds")
+    pd.concat(y_preds, axis=1).to_hdf(args["output"], "y_preds")
 
 
 if __name__ == "__main__":

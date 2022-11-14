@@ -286,6 +286,7 @@ def plot_pr_curves(
     smoothing=True,
     save_format="png",
     palette=sns.color_palette("deep"),
+    title="Precision-Recall",
 ):
     no_ax = ax is None
     if no_ax:
@@ -324,7 +325,7 @@ def plot_pr_curves(
 
     ax.legend(loc="upper right")
     # sns.move_legend(ax, "center left", bbox_to_anchor=(1, 0.5))
-    ax.set_title("Precision-Recall")
+    ax.set_title(title)
     ax.set_xlabel("Sensitivity (Recall)")
     ax.set_ylabel("Positive Predictive Value (Precision)")
     if save:
@@ -619,7 +620,7 @@ def with_sampling_strategies(clf, clf_name="Classifier", categorical_cols_idx=[]
 
 def plot_shap_features_joint(
     shap_values,
-    modelkey,
+    title=None,
     max_display=20,
     figsize=(16, 8),
     bar_aspect=0.045,
@@ -642,7 +643,7 @@ def plot_shap_features_joint(
     ax1.set_yticklabels([])
     ax1.tick_params(axis="both", which="major", labelsize=16)
     ax1.tick_params(axis="both", which="minor", labelsize=14)
-    ax1.set_xlabel("SHAP value (impact on model output)", fontsize=16)
+    ax1.set_xlabel("(b) SHAP value (impact on model output)", fontsize=16)
 
     ax2 = fig.add_subplot(121, aspect=bar_aspect)
     shap.summary_plot(
@@ -653,12 +654,12 @@ def plot_shap_features_joint(
         show=False,
         color="purple",
     )
-    ax2.set_xlabel("Mean magnitude of SHAP value", fontsize=16)
+    ax2.set_xlabel("(a) Mean magnitude of SHAP value", fontsize=16)
     ax2.tick_params(axis="both", which="major", labelsize=16)
     ax2.tick_params(axis="both", which="minor", labelsize=14)
     plt.tight_layout()
     plt.subplots_adjust(wspace=wspace)
-    plt.suptitle(modelkey, fontsize=20)
+    plt.suptitle(title, fontsize=20)
     plt.subplots_adjust(top=topadjust)
     if save:
         plt.savefig(
