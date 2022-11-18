@@ -460,7 +460,7 @@ class Estimator_IsolationForest(Estimator):
         ordinal=False,
         imputation=True,
         fillna=True,
-        oneclass=False,
+        oneclass=True,
         calibration=False,
         explanation=False,
         scaling=False,

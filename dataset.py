@@ -346,13 +346,22 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def derive_death_within(
-        self, within=1, col_name="DiedWithinThreshold", return_series=False
+        self,
+        within=1,
+        col_name="DiedWithinThreshold",
+        return_series=False,
+        return_threshold=False,
     ):
         """Determines the patients' mortality outcome.
         :param within: Time since admission to consider a death. E.g., 1.0 means died within 24 hours, otherwise lived past 24 hours
         :return: New SCIData instance with the new feature added
         """
         r = self.copy()
+
+        if return_threshold:
+            result = r.TotalLOS.copy()
+            result[~r.DiedDuringStay] = 0
+            return result.rename("Mortality")
 
         if within is not None:
             col = r.DiedDuringStay & (r.TotalLOS <= within)
@@ -383,6 +392,7 @@ class SCIData(pd.DataFrame):
         within=1,
         col_name="CriticalCare",
         return_series=False,
+        return_threshold=False,
     ):
         """Determines admission to critical care at any point during the spell as indicated by admission to specified wards
         :param critical_wards: The wards to search for. By default, ['CCU', 'HH1M']
@@ -408,6 +418,9 @@ class SCIData(pd.DataFrame):
         los_on_critical_admission.index = los_on_critical_admission.index.droplevel(1)
 
         # r["CriticalCare"] = m.any(axis=1)
+
+        if return_threshold:
+            return los_on_critical_admission.rename("CriticalCare")
 
         r[col_name] = los_on_critical_admission <= (within or 999)
         r[col_name] = r[col_name].fillna(False)
@@ -953,13 +966,26 @@ class SCIData(pd.DataFrame):
         col_name="CriticalEvent",
         return_subcols=False,
         return_series=False,
+        return_threshold=False,
     ):
         """Determines the patients' critical event outcome.
         :param within: Time since admission to consider a critical event. E.g., 1.0 means it occurred within 24 hours, otherwise lived past 24 hours
         :return: New SCIData instance with the new feature added
         """
-        mortality = self.derive_death_within(within=within, return_series=True)
-        critical = self.derive_critical_care(within=within, return_series=True)
+        mortality = self.derive_death_within(
+            within=within, return_series=True, return_threshold=return_threshold
+        )
+        critical = self.derive_critical_care(
+            within=within, return_series=True, return_threshold=return_threshold
+        )
+
+        if return_threshold:
+            return (
+                critical.replace(0, np.nan)
+                .combine_first(mortality)
+                .rename("CriticalEvent")
+            )
+
         col = mortality | critical
 
         if return_series:
@@ -1783,7 +1809,7 @@ class SCICols:
 
     pretty_print_columns = {
         "Respiration_rate": "Respiration Rate",
-        "O2_saturation": "SpO2",
+        "" "O2_saturation": "SpO2",
         "Temperature": "Temperature",
         "SystolicBP": "Systolic BP",
         "HeartRate": "Pulse",
@@ -1805,6 +1831,7 @@ class SCICols:
         "Sodium_serum": "Sodium",
         "Potassium_serum": "Potassium",
         "Creatinine": "Creatinine",
+        "AdmissionMethod": "Admission Pathway",
         "AdmissionMethodDescription": "Admission Pathway",
         "AdmissionSpecialty": "Admission Specialty",
         "SentToSDEC": "Sent To SDEC",

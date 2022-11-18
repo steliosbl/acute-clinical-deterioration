@@ -84,12 +84,9 @@ def biggest_alert_rate_diff(y_true, y_score_x, y_score_y, n_days):
 
 def alert_rate_curve(y_true, y_score, n_days, sample=None):
     precision, recall, thresholds = precision_recall_curve(y_true, y_score)
-    alert_rate = (
-        np.array(
-            [np.where(y_score > threshold, 1, 0).sum() for threshold in thresholds]
-        )
-        / n_days
-    )
+    alert_rate = np.array(
+        [np.where(y_score > threshold, 1, 0).sum() for threshold in thresholds]
+    ) / (n_days)
 
     if sample is not None:
         return recall[::sample], alert_rate[::sample]
@@ -114,7 +111,15 @@ def find_earliest_intersection(x1, y1, x2, y2, after=0.7):
 
 
 def plot_alert_rate(
-    y_true, y_preds, n_days, baseline_key=None, ax=None, save=None, save_format="png"
+    y_true,
+    y_preds,
+    n_days,
+    baseline_key=None,
+    intercepts=True,
+    ax=None,
+    save=None,
+    save_format="png",
+    title="Sensitivity vs. Alert Rate",
 ):
     no_ax = ax is None
     if no_ax:
@@ -125,16 +130,24 @@ def plot_alert_rate(
     if type(list(y_preds.values())[0]) == tuple:
         y_preds = {key: value[1] for key, value in y_preds.items()}
 
-    x_intercept, y_intercept = alert_rate_curve(
-        y_true, y_preds[baseline_key], n_days, sample=None
-    )
+    if baseline_key:
+        x_intercept, y_intercept = alert_rate_curve(
+            y_true, y_preds[baseline_key], n_days, sample=None
+        )
 
     for idx, (model, y_pred_proba) in enumerate(y_preds.items()):
         if model == baseline_key:
             continue
 
         x, y = alert_rate_curve(y_true, y_pred_proba, n_days, sample=100)
-        intersection = find_earliest_intersection(x_intercept, y_intercept, x, y)
+        intersection = None
+        if baseline_key and intercepts:
+            try:
+                intersection = find_earliest_intersection(
+                    x_intercept, y_intercept, x, y
+                )
+            except StopIteration:
+                pass
         sns.lineplot(
             x=x,
             y=y,
@@ -151,17 +164,18 @@ def plot_alert_rate(
                 xytext=(min(1 - 0.015, intersection[0] + 0.045), intersection[1] - 0.4),
             )
 
-    sns.lineplot(
-        x=x_intercept,
-        y=y_intercept,
-        label=baseline_key.replace(" (tuned)", ""),
-        linestyle="--",
-        linewidth=2,
-        ax=ax,
-        color="tomato",
-    )
+    if baseline_key:
+        sns.lineplot(
+            x=x_intercept,
+            y=y_intercept,
+            label=baseline_key.replace(" (tuned)", ""),
+            linestyle="--",
+            linewidth=2,
+            ax=ax,
+            color="tomato",
+        )
 
-    ax.set_title("Sensitivity vs. Alert Rate")
+    ax.set_title(title)
     ax.set_xlabel("Sensitivity")
     ax.set_ylabel("Mean alerts per day")
     ax.set_xlim(0, 1.08)
@@ -326,8 +340,8 @@ def plot_pr_curves(
     ax.legend(loc="upper right")
     # sns.move_legend(ax, "center left", bbox_to_anchor=(1, 0.5))
     ax.set_title(title)
-    ax.set_xlabel("Sensitivity (Recall)")
-    ax.set_ylabel("Positive Predictive Value (Precision)")
+    ax.set_xlabel("Sensitivity")
+    ax.set_ylabel("PPV (Precision)")
     if save:
         plt.savefig(
             save,
@@ -341,7 +355,14 @@ def plot_pr_curves(
 
 
 def plot_calibration_curves(
-    y_true, y_preds, linewidth=2, save=None, ax=None, save_format="png"
+    y_true,
+    y_preds,
+    linewidth=2,
+    palette=sns.color_palette("deep"),
+    title="Calibration",
+    save=None,
+    ax=None,
+    save_format="png",
 ):
     no_ax = ax is None
     if no_ax:
@@ -361,10 +382,12 @@ def plot_calibration_curves(
                 linewidth=linewidth,
                 name=modelkey.replace(" (tuned)", ""),
             )
+            ax.set_xlabel('Mean predicted probability')
+            ax.set_ylabel('Fraction of positives')
         except ValueError:
             pass
 
-    ax.set_title("Calibration")
+    ax.set_title(title)
     if save:
         plt.savefig(
             save,
@@ -629,7 +652,7 @@ def plot_shap_features_joint(
     save=None,
     save_format="png",
 ):
-    sns.set_style("darkgrid")
+    sns.set_style("whitegrid")
     fig = plt.figure(figsize=figsize)
 
     ax1 = fig.add_subplot(122, aspect="auto")
@@ -643,7 +666,8 @@ def plot_shap_features_joint(
     ax1.set_yticklabels([])
     ax1.tick_params(axis="both", which="major", labelsize=16)
     ax1.tick_params(axis="both", which="minor", labelsize=14)
-    ax1.set_xlabel("(b) SHAP value (impact on model output)", fontsize=16)
+    ax1.set_xlabel("(b) Episode-individual SHAP value", fontsize=16)
+    ax1.set_xlim((-1.5, 3))
 
     ax2 = fig.add_subplot(121, aspect=bar_aspect)
     shap.summary_plot(
@@ -654,7 +678,7 @@ def plot_shap_features_joint(
         show=False,
         color="purple",
     )
-    ax2.set_xlabel("(a) Mean magnitude of SHAP value", fontsize=16)
+    ax2.set_xlabel("(a) Mean absolute SHAP value", fontsize=16)
     ax2.tick_params(axis="both", which="major", labelsize=16)
     ax2.tick_params(axis="both", which="minor", labelsize=14)
     plt.tight_layout()
