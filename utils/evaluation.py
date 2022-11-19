@@ -382,8 +382,8 @@ def plot_calibration_curves(
                 linewidth=linewidth,
                 name=modelkey.replace(" (tuned)", ""),
             )
-            ax.set_xlabel('Mean predicted probability')
-            ax.set_ylabel('Fraction of positives')
+            ax.set_xlabel("Mean predicted probability")
+            ax.set_ylabel("Fraction of positives")
         except ValueError:
             pass
 

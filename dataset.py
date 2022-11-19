@@ -1809,7 +1809,7 @@ class SCICols:
 
     pretty_print_columns = {
         "Respiration_rate": "Respiration Rate",
-        "" "O2_saturation": "SpO2",
+        "O2_saturation": "SpO2",
         "Temperature": "Temperature",
         "SystolicBP": "Systolic BP",
         "HeartRate": "Pulse",
@@ -1822,7 +1822,7 @@ class SCICols:
         "Oxygen_flow_rate": "FiO2",
         "Nausea": "Nausea",
         "BreathingDevice": "Breathing Device",
-        "AandEPresentingComplaint": "PresentingComplaint",
+        "AandEPresentingComplaint": "Presenting Complaint",
         "AandEMainDiagnosis": "A&E Diagnosis",
         "Female": "Female",
         "Age": "Age",
