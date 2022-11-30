@@ -61,6 +61,7 @@ def study_grid_from_args(args, scii):
             Estimator_OneClassSVM,
             Estimator_L1Regression,
             Estimator_L2Regression,
+            Estimator_ElasticNetRegression
         ],
         gpu=[Estimator_TabNet],
     )
