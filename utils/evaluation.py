@@ -89,7 +89,7 @@ def alert_rate_curve(y_true, y_score, n_days, sample=None):
     ) / (n_days)
 
     if sample is not None:
-        return recall[::sample], alert_rate[::sample]
+        return recall[np.round(np.linspace(0, len(recall) - 1, sample)).astype(int)], alert_rate[np.round(np.linspace(0, len(alert_rate) - 1, sample)).astype(int)]
     else:
         return recall[:-1], alert_rate
 
@@ -120,6 +120,8 @@ def plot_alert_rate(
     save=None,
     save_format="png",
     title="Sensitivity vs. Alert Rate",
+    xlim=(0, 1.08),
+    ylim=None
 ):
     no_ax = ax is None
     if no_ax:
@@ -139,7 +141,7 @@ def plot_alert_rate(
         if model == baseline_key:
             continue
 
-        x, y = alert_rate_curve(y_true, y_pred_proba, n_days, sample=100)
+        x, y = alert_rate_curve(y_true, y_pred_proba, n_days, sample=200)
         intersection = None
         if baseline_key and intercepts:
             try:
@@ -178,7 +180,10 @@ def plot_alert_rate(
     ax.set_title(title)
     ax.set_xlabel("Sensitivity")
     ax.set_ylabel("Mean alerts per day")
-    ax.set_xlim(0, 1.08)
+    ax.set_xlim(*xlim)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+
     if save:
         plt.savefig(
             save,
@@ -189,6 +194,8 @@ def plot_alert_rate(
 
     if no_ax:
         plt.rc("axes", titlesize=12)
+    
+   # return fig, ax
 
 
 def get_calibrated_regression_coefficients(model, columns, pipeline_key=None):
