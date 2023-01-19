@@ -56,9 +56,8 @@ The notebooks `model_selection.ipynb`, `model_evaluation.ipynb`, and `clinical_m
 
 Supporting code:
  - `dataset.py`: Classes for interacting with the proprietary dataset used for testing.
- - `hyperparameter_tuning.py`: The source code for hyperparameter tuning of different types of classifiers. 
  - `initial_preprocessing.py`: Script to execute all the manual data cleaning steps. 
- - `models.py`: Classes for interacting with classifier types.
+ - `models.py`: Classes for interacting with classifier types, including hyperparameter tuning.
  - `systematic_comparison.py`: The source code for the systematic model comparison experiments.
 
 ## References
