@@ -371,7 +371,7 @@ class SCIData(pd.DataFrame):
         if return_series:
             return col
 
-        r[col_name]
+        r[col_name] = col
 
         return SCIData(r)
 

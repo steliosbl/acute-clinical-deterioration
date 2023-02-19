@@ -1,0 +1,755 @@
+\documentclass[fleqn,10pt]{wlscirep}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{multirow}
+\usepackage{bm}
+\usepackage{svg}
+\usepackage{longtable}
+\usepackage{textgreek}
+\usepackage{pdflscape}
+\usepackage{amsmath, mathtools}
+\usepackage{calrsfs}
+\DeclareMathAlphabet{\pazocal}{OMS}{zplm}{m}{n}
+\svgpath{{images/}}
+
+\DeclarePairedDelimiter\abs{\lvert}{\rvert}%
+\DeclarePairedDelimiter\norm{\lVert}{\rVert}%
+\DeclarePairedDelimiter\ceil{\lceil}{\rceil}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+
+\title{Predicting Acute Clinical Deterioration with Interpretable Machine Learning to support Emergency Care Decision Making}
+
+\author[1]{Stelios Boulitsakis Logothetis}
+\author[2,3]{Darren Green}
+\author[4]{Mark Holland}
+\author[1,5]{*Noura Al Moubayed}
+\affil[1]{Department of Computer Science, University of Durham, Durham, United Kingdom}
+\affil[2]{Northern Care Alliance NHS Foundation Trust, Department of Renal Medicine, Manchester, United Kingdom}
+\affil[3]{Division of Cardiovascular Sciences, University of Manchester, Manchester, United Kingdom}
+\affil[4]{School of Clinical and Biomedical Sciences, University of Bolton, United Kingdom}
+\affil[5]{Evergreen Life Ltd, Manchester, United Kingdom}
+
+
+%\affil[+]{these authors contributed equally to this work}
+
+%\keywords{Keyword1, Keyword2, Keyword3}
+
+\begin{abstract}
+The emergency department is a fast-paced environment responsible for large volumes of patients with varied acuity. Operational pressures on emergency departments are increasing, which creates the imperative to efficiently identify patients at risk of acute deterioration and minimise patients' risk of morbidity and mortality. We apply state-of-the-art machine learning methods to predict patient deterioration early, based on their first recorded vital signs, observations, laboratory results, and other predictors documented in Electronic Patient Records. We build on prior work by incorporating interpretable machine learning and fairness-aware modelling, and achieve improved classification performance over the current standard, the National Early Warning Score 2, measured by average precision and daily alert rate. We use a cross-sectional Electronic Patient Record dataset comprising $121,058$ unplanned admissions at Salford Royal Hospital, UK, to systematically compare model variations for predicting mortality and critical care utilisation within 24 hours of admission. Our models yield up to $0.375$ increase in average precision, up to $18.5\%$ reduction in daily alert rate, and a median $0.577$ reduction in differential bias amplification across the protected demographics of age and sex. We use Shapely Additive exPlanations to justify the models' outputs, verify that the captured data associations align with domain knowledge, and pair predictions with the causal context of each patient’s most influential characteristics. We encourage future research to follow a systematised approach to data-driven risk modelling and help obtain clinically applicable support tools.  
+\end{abstract}
+\begin{document}
+
+\flushbottom
+\maketitle
+
+\thispagestyle{empty}
+
+\section*{Introduction}
+When patients deteriorate, care providers must be able to recognise their worsening condition immediately and intervene accordingly \cite{Hillman01b}. Delayed identification of deterioration is associated with preventable hospital deaths \cite{Hogan12}, while delaying the transfer of critically ill patients to intensive care puts them at higher risk of morbidity and mortality \cite{Chalfin07}. The importance of timely identification and appropriate response to clinical instability has motivated the development of 'track-and-trigger' systems. These systems tie clinical observations that are antecedent to patient deterioration with recommended interventions to be executed by care staff or dedicated response teams as part of a rapid response system \cite{Devita10}. In the United Kingdom, this system is recommended by both National Institute for Health and Care Excellence (NICE) and the Royal College of Physicians (RCP) to monitor all adult patients in acute hospital settings \cite{CG50, RCP17}.
+
+In most cases, acute clinical instability and deterioration are preceded by abnormal vital signs \cite{Kause04}, therefore standard practice in acute secondary care settings is to monitor patients using basic homeostatic measures, which include heart rate, blood pressure, inspired oxygen, oxygen saturation, temperature, and level of consciousness \cite{Smith13}. To assist this process, weighted aggregate scores of these measures, known as Early Warning Scores (EWS), have been developed to characterise the patient’s acuity \cite{Morgan07}. These scores can act as the afferent component of a rapid response system, tying them to an escalation protocol or a set of recommended clinical interventions \cite{Devita10}.
+
+Historically, data pertaining to an EWS were manually recorded and tallied on paper charts. As such, they often fell short of including the full breadth and variety of available predictive information \cite{Gerry20}. The gradual phasing-out of bedside paper charts has brought the transition to digital EWS solutions that draw patient data in real-time from Electronic Patient Records (EPR). Beyond digitising conventional EWS, EPR systems collate comprehensive patient data, which can be used to improve performance and clinical utility \cite{Goldstein17}. In particular, the large volume of available data makes it feasible to develop a purely or partly data-driven solution using machine learning. AI-based systems have already demonstrated suitability for assisting in medical imaging tasks, which makes AI-powered prognostic modelling a key research area of interest \cite{Obermeyer16}. Our study concentrates on analysing EPR data to model clinical risk, as we use machine learning methods to potentially identify acute clinical deterioration in patients presenting to the emergency department (ED).
+
+Prior work has used machine learning to model inpatient admission, deterioration, critical care admission, cardiac arrest, and mortality, among other outcomes \cite{Grant20}. In a systematic review of studies published from 2009-2017, Goldstein et al. identified 107 applications of EPR data to training statistical and ML models \cite{Goldstein17}. Recently, Klug et al. \cite{Klug20} used gradient-boosted decision trees (GBDT) on a single-centre cohort of approximately $800,000$ ED episodes to predict short-term mortality risk and achieved improved performance over severity scores such as the Shock Index \cite{Torabi16}. Romero et al. \cite{Romero21} developed a gradient-boosting machine (GBM) model for use as an EWS and demonstrated superior performance compared to the National Early Warning Score 2 (NEWS2) \cite{RCP17}. Finally, Fernandes et al. \cite{Fernandes20} investigated the predictive value of ED patients’ presenting complaints compared to vital signs and other measurements. They used natural language processing (vectorisation with TF-IDF normalisation) to encode unstructured complaint information and trained models on a cohort of approximately $235,000$ patients to predict mortality or cardiac arrest. Their experimental findings showed improved predictive performance and calibration when including the chief complaint as a predictor.
+
+This study applies state-of-the-art methods from contemporary machine learning practice to estimate risk of deterioration for acute medical patients in the ED. We bring together findings from prior studies to improve the differentiation of at-risk patients and address challenges that are prerequisites to clinical deployment for a proposed solution. The ED is a fast-paced environment that treats a large volume of patients with varied acuity and is responsible for their initial assessment and clinical management \cite{Mohr20}. Operational pressures in EDs are steadily increasing \cite{Ams21}, creating an imperative to differentiate the patients with the highest risk efficiently. In our study setting, 'obvious cases' of imminent critical deterioration usually bypass the acute medical team and are escalated immediately. By elimination, the remaining patients are 'less obvious' cases and thus have a greater need for decision support. Conventional, general-purpose EWS are not optimised for specific patient populations or contexts, while 'off-the-shelf' EWS, such as the NEWS2, have variable performance \cite{Alam14}. Recent work argues in favour of centre-specific, locally tailored scores and risk models \cite{Obrien20, Futoma20}; data-driven solutions deployable at scale can fulfil this role.
+
+We systematically compare the performance of various learning algorithms based on logistic regression (LR), gradient-boosted decision trees (GBDT), and support vector machines (SVM) for predicting imminent clinical deterioration based on cross-sectional patient data extracted from EPR. Our outcome of interest is a composite of in-hospital mortality and admission to critical care to represent severe and time-sensitive medical conditions requiring intervention. We ensure the models’ outputted probabilities are well-calibrated and reliable to fit into existing frameworks for assessing clinical utility \cite{Calster18}. Rather than prescribe a specific threshold for classifying high-risk cases, we measure our models’ discriminative skill across sensitivities via precision-recall curves and through their daily alert rate, which expresses how they would operate when deployed. We compare our performance against NEWS2, the preferred EWS in the United Kingdom \cite{Williams22}.
+
+An extant practical challenge we address is models not generalising to new application environments due to structural differences compared to the development environment \cite{Taylor16, Challen19}. Solutions with rigid data requirements unrealistically require providers to conform to a specific pattern of testing or treatment to produce all the requisite data correctly \cite{Taylor16}. To avoid making assumptions about data availability or its collection context (such as timing, reliability, or frequency), we conduct experiments using different sets of predictive features that providers might generate under their unique clinical workflow. Starting with vital signs, we gradually construct models with finer information, including manual observations, laboratory results, clinical notes, and service utilisation, to reveal the most influential features.
+
+A further barrier is a requirement for models supporting the clinical workflow to be transparent, safe, fair, and traceable in their decision-making process \cite{Meyer18, Holzinger17}. Machine learning models have conventionally operated as 'black boxes' \cite{Velez17}, obscuring their internal reasoning and biases \cite{Holzinger17, Barocas16}. Advances in interpretable machine learning and fairness-aware modelling allow us to address this. We incorporate methods from the fair machine learning literature \cite{Mehrabi21, Barocas19} into our evaluation framework to ensure our constructed models do not exhibit unfair bias against individuals or protected demographic groups. Then, we utilise Shapely Additive exPlanations \cite{Lundberg18}, a recently popularised model-agnostic framework for interpreting predictive models, to produce justifications for our models’ risk predictions on the individual patient level. These justifications reveal the best-performing models' internal reasoning and allow us to examine and validate the relationships between the significant predictors and the outcome. In addition to predicting a patient’s risk, our interpretable models can justify their prediction to the user by isolating the relevant characteristics of the patient that led them to that result \cite{Shawi20, Lundberg18}.
+
+\section*{Results}
+
+Our selected data comprised $121,058$ presentations to the acute medical unit (AMU) at Salford Royal Hospital, Manchester, UK, corresponding to $62,162$ distinct patients over the study period of January 2015 to March 2022. We identified $8,341$ critical deterioration events, of which $2,893$ occurred within 24 hours after admission. The Methods Table \ref{tab:data_summary} summarises the dataset and presents the stratification of samples across the three data subsets we used in our analysis: we partitioned the samples chronologically 2:1 into a model development set and a validation set, and we additionally considered an 'unseen' subset of the validation set that excludes the $8,139$ patients ($13.09\%$, making up $42.24\%$ of the validation set's records) that had prior admission records in the training set. The rates of critical care admission, mortality, and composite critical deterioration were uniform across the chronological split.
+
+\begin{figure}[htbp]
+    \centering
+    \includesvg[inkscapelatex=false, width=\linewidth]{images/ap_bar.svg}
+    \includesvg[inkscapelatex=false, width=\linewidth]{images/auc_bar.svg}
+    \caption{Average precision \textbf{(a)} and Area under receiver operating curve \textbf{(b)} achieved by the best predictive models per learning algorithm across tested sets of data features. Each group corresponds to independent models trained with the indicated feature set concatenated to all the previous feature sets to its right. The error bars represent $95\%$ bootstrapped confidence intervals. Obs: Supplemental observations \& phenotype, Labs: Laboratory results, Notes: Clinical notes, Services: Triage \& service utilisation. We detail the contents of the feature sets in Methods Table \ref{tab:feature_sets}.}
+    \label{fig:score_barplots}
+\end{figure}
+
+We compared numerous modelling pipeline variations as described in the Methods section. From this comparison, we identified LightGBM, a variant of GBDT, as the best-performing learning algorithm overall and logistic regression with L2 penalty (LR-L2) as the best linear model. We summarise their performance in Table \ref{tab:summary_results}. Figure \ref{fig:score_barplots} compares the average precision (AP) and area under the receiver operating curve (AUROC) of the best predictive models across classifier types on the complete validation set against the measured performance of the reference model (NEWS2) on this patient cohort. The groups in each plot correspond to incrementally augmenting the training data - the leftmost groups of each section present models using only vital signs as predictors, and subsequent groups give the results when we concatenated the indicated feature set (as described in Methods Table \ref{tab:feature_sets}) to the previous training inputs. We test these sets of features in order of 'centre-specificity', so that the most clinically standardised predictors, such as vital signs, are considered first. We provide the actual measurements with bootstrapped confidence intervals and the performance on the 'unseen' validation set in Supplementary Tables 7 and 8.
+
+\begin{figure}[htbp]
+    \centering
+    \includesvg[inkscapelatex=false, width=\linewidth]{images/alert_pr_all.svg}
+    \includesvg[inkscapelatex=false, width=\linewidth]{images/alert_pr_lightgbm.svg}
+    \caption{Alert Rate vs Sensitivity \textbf{(a,c)} and Precision-Recall curves \textbf{(b,d)}. Top Row \textbf{(a,b)}: All learning algorithms trained on the complete feature set (equiv. "\& Services"). Bottom Row \textbf{(c,d)}: GBDT (LightGBM) across feature sets (concatenated incrementally). In \textbf{(a,c)}, the Alert Rate curve plots the arithmetic mean of daily positive predictions (alerts) across the validation period for a given sensitivity value (y-axis) against that sensitivity value (x-axis). The point where two lines intersect corresponds to the maximum achievable sensitivity for which the model with the lower line maintains a lower daily alert rate than the model with the upper line. In \textbf{(b,d)}, the Precision-Recall (PR) curve presents the positive predictive value (PPV, or precision) on the y-axis against sensitivity on the x-axis. On the PR curve, an unskilled model giving random outputs would yield a horizontal line at $y=P/(P+N)$, where $P$ and $N$ are the numbers of positive and negative samples in the data, respectively, while a theoretical 'perfect' model would yield a single point $(1,1)$ in the upper-right corner of the plot. The curves are plotted from each model's outputted predictions for the complete validation set.}
+    \label{fig:alert_pr_curves}
+\end{figure}
+
+
+\begin{table}[htbp]
+    \renewcommand{\arraystretch}{1.2}
+    \centering
+    \begin{tabular}{lll|ccccc}
+        \toprule
+        \textbf{Metric}                 & \textbf{Estimator}                 & \textbf{Dataset}  & Vitals  & \& Obs  & \& Labs & \& Notes & \& Services  \\
+
+        \midrule
+        \multirow{4}{*}{\textbf{AP}}    & \multirow{2}{*}{\textbf{LR-L2}}    & \textbf{Complete} & $0.157$ & $0.258$ & $0.259$ & $0.264$  & $0.466$      \\
+                                        &                                    & \textbf{Unseen}   & $0.172$ & $0.309$ & $0.305$ & $0.312$  & $0.478$      \\
+        \cline{2-8}
+                                        & \multirow{2}{*}{\textbf{LightGBM}} & \textbf{Complete} & $0.179$ & $0.314$ & $0.314$ & $0.323$  & $\bm{0.513}$ \\
+                                        &                                    & \textbf{Unseen}   & $0.206$ & $0.370$ & $0.365$ & $0.374$  & $\bm{0.523}$ \\
+        \cline{1-8}
+        \multirow{4}{*}{\textbf{AUROC}} & \multirow{2}{*}{\textbf{LR-L2}}    & \textbf{Complete} & $0.812$ & $0.836$ & $0.838$ & $0.851$  & $0.894$      \\
+                                        &                                    & \textbf{Unseen}   & $0.823$ & $0.843$ & $0.845$ & $0.854$  & $0.896$      \\
+        \cline{2-8}
+                                        & \multirow{2}{*}{\textbf{LightGBM}} & \textbf{Complete} & $0.835$ & $0.868$ & $0.888$ & $0.891$  & $\bm{0.922}$ \\
+                                        &                                    & \textbf{Unseen}   & $0.842$ & $0.879$ & $0.896$ & $0.897$  & $\bm{0.923}$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{\label{tab:summary_results} Summary of model performance. Average precision (AP) and Area under receiver operating curve (AUROC) of GBDT (LightGBM) and logistic regression with L2 penalty (LR-L2) for predicting 24-hour critical deteriorations on the two validation sets: 'Complete', the full validation set, and 'Unseen', which includes only patients who had no admissions in the training dataset. Each column corresponds to independent models trained with the indicated feature set concatenated to all the previous feature sets to its right.}
+\end{table}
+
+Data-driven modelling matched or outperformed the reference model across all feature sets, with the complete feature set (rightmost group in each section of Figure \ref{fig:score_barplots}) giving the best performance. Both AP and AUROC trended upward as the number of predictors grew, though phenotype and supplemental observations ("\& Obs"), laboratory results ("\& Labs"), and clinical notes ("\& Notes") had a greater impact on the average precision while the AUROC remained more stable. Including triage and service utilisation ("\& Services") yielded the largest singular boost in AP (increase from $0.324 \rightarrow 0.513$ for GBDT). Figure \ref{fig:alert_pr_curves} illustrates the alert rate vs sensitivity and precision-recall curves for GBDT across different feature sets and for all classifier types trained on the complete feature set. GBDT produced fewer alerts per day on average compared to the reference model up to very high sensitivities ($0.966$), and all classifiers maintained an improved alert rate up to moderately high sensitivities ($>0.80$). The largest reduction of alert rate was at sensitivity $0.864$, where GBDT yielded $9.869$ daily alerts, $18.50\%$ less than NEWS2's $12.110$. The positive predictive value (PPV) of GBDT-Vitals behaves similarly to the reference model as we vary sensitivity. Performance was stable between the "Complete" and "Unseen" validation sets, with a median increase of $0.054$ for AP and $0.012$ for AUROC when the 'known' patients were removed, as shown in Supplementary Tables 7 and 8. All models had satisfactory calibration, though with a tendency to underestimate the probability of critical deterioration, as illustrated in Supplementary Figure 8.
+
+\begin{figure}[tb]
+    \centering
+    \includegraphics[width=\linewidth]{images/shap_lgbm.png}
+    \caption{Induced feature importances for GBDT (LightGBM) in decreasing order of mean absolute impact. In \textbf{(a)}, the bar lengths represent the mean absolute impact of each feature on the model's predictions for the validation set. In \textbf{(b)}, each point represents a value from one admission record. The points' colour corresponds to numerical value, and their position on the x-axis represents the magnitude of their contribution towards increasing the predicted risk (if $x>0$) or reducing it (if $x<0$).}
+    \label{fig:shap_lightgbm}
+\end{figure}
+
+The feature interactions induced by SHAP for GBDT yielded further insight into the predictors' relationship with our clinical outcome. Figure \ref{fig:shap_lightgbm} (a) ranks all the included predictors by their mean absolute impact towards positive predictions (deterioration) and negative ones (no deterioration) across the validation set, (b) illustrates the patient-individual impact of each feature, and Supplementary Figure 10 breaks down the relative impact of the values taken by categorical data features. The presenting complaint ranked the highest and contributed similarly towards positives ("diabetes", "GI bleeding") and negatives ("back pain", "facial problems"). The model captured a non-linear relationship between risk and indicators of kidney function, such as creatinine and urea levels, which is consistent with clinical findings differentiating the mortality risk of acute kidney injury versus chronic disease \cite{James20}. Triage decisions were heavily influential, with same day emergency care (SDEC) invariably reducing the estimated risk, while certain clinical specialities, such as respiratory medicine, geriatric medicine, and general medicine (a catch-all for non-specialty cases), strongly contributed towards positives.
+
+Similarly, we record the coefficients of the logistic regression models in Supplementary Tables 9 and 10 and find them to be consistent across the penalised models. SDEC, higher sodium levels, and specific presenting complaints (e.g., "facial problems", "ear problems") reduce the estimated risk. Conversely, elevated respiratory rate, potassium levels, requiring a bed, and certain clinical specialities and breathing devices yield increased risk estimates. It is interesting to notice that age is assigned a negative coefficient. Figure \ref{fig:shap_lightgbm} reveals that GBDT also identified age as a strong predictor, with advanced age driving the model towards negative predictions rather than positive ones. We explore this non-intuitive and potentially spurious association in Figure \ref{fig:age_temperature}(a,b) which compares the two models' patient-individual SHAP values for the age feature. We theorise this relationship is partly due to high-frailty patients (aged $\geq 80$ years), having the lowest proportion of 24-hour critical deterioration events out of all age groups (as shown in Supplementary Figure 7) despite being very frequent attendees at the ED.
+
+\begin{figure}[htbp]
+    \centering
+    \includesvg[inkscapelatex=false, width=0.8\linewidth]{images/shap_scatter_age.svg}
+    \includesvg[inkscapelatex=false, width=0.8\linewidth]{images/shap_scatter_temperature.svg}
+    \caption{Feature-specific importances extracted by SHAP from GBDT \textbf{(a,c)} and LR-L2 \textbf{(b,d)}. The top section \textbf{(a,b)} presents the importances of patient age, while the lower section \textbf{(c,d)} presents body temperature. Each point represents a value from one validation set record. The points' position on x-axis represents the numerical feature value, while the y-axis indicates their contribution to the prediction for that patient, with values above $y=0$ (indicated in red) contributing towards making the prediction positive and values below $y=0$ (indicated in blue) contributing towards making the prediction negative.}
+    \label{fig:age_temperature}
+\end{figure}
+
+
+\begin{figure}[htbp]
+    \centering
+    \includesvg[inkscapelatex=false, width=\linewidth]{images/raw_vs_scored_ap.svg}
+    \caption{Average precision (AP) of \textbf{(a)} LR-L2 and \textbf{(b)} GBDT. Each pair of bars corresponds to incrementally including the indicated feature sets (from Methods Table \ref{tab:feature_sets}) as training data. For a given feature set, we measure the AP of two independently trained models, one using the direct measurements of vital signs (blue), and one with the vital signs encoded using the NEWS2 severity scales (red). The error bars represent $95\%$ bootstrapped confidence intervals.}
+    \label{fig:raw_vs_scored}
+\end{figure}
+
+As an additional test, we trained logistic regression and GBDT models with vital signs encoded into integers $0-3$ per the NEWS2 severity scales \cite{RCP17}. We compared the results with the classifiers' performance when using the original vital sign values to investigate how each model type captures the non-linear relationship between vitals and clinical outcomes in Figure \ref{fig:raw_vs_scored}. We observe that the 'handcrafted' scales boosted the performance of logistic regression across feature sets, while GBDT's performance either dropped or remained stable. Figure \ref{fig:age_temperature}(c,d) presents an example of a diverging relationship learned by GBDT and LR from the same feature, temperature. Note that the presented results thus far assume 24 hours after admission as the cut-off point for identifying deterioration events. Supplementary Figure 9 illustrates how the AUROC of GBDT and LR-L2 varied when we increased the (cumulative) time threshold gradually from 24 hours to 30 days. Across all feature sets, the AUROC trended downwards as the cut-off widened and the on-admission measurements for each newly included sample became more distant from the outcome.
+
+Finally, Figure \ref{fig:entropy} presents the generalised entropy index vs sensitivity for GBDT across the tested feature sets and all models trained on the complete feature set. Supplementary Figure 11 isolates the between-group fairness component of the generalised entropy index when we consider the population groups defined by the protected demographic characteristics of age group and sex (as specified in Supplementary Figure 7). All models except for GBDT-Vitals achieve an improved fairness score compared to the reference model across sensitivity thresholds. NEWS2 produces a better between-group fairness and, correspondingly, a more significant unfairness within the demographic groups, under the complete feature set above sensitivities of $\sim0.82$. To account for potential pre-existing inequalities in the cohort, we record the differential bias amplification of the models in Supplementary Table 11. These measurements corroborate the generalised entropy findings, with a positive bias amplification under the vital signs feature set when considering age groups. However, this diminishes when considering intersectional protected groups of both age and sex. Bias amplification values across all other feature sets are strongly negative - indicating removal of bias - or near zero. We theorise that this unusual amplification of inequality with respect to age groups is due to the vital signs feature set containing insufficient information to predict our tracked outcome correctly for patients of all ages.
+
+\begin{figure}[htbp]
+    \centering
+    \includesvg[inkscapelatex=false, width=\textwidth,height=0.9\textheight,keepaspectratio]{images/entropy.svg}
+    \caption{Generalised Entropy vs Sensitivity curves of \textbf{(a)}: GBDT across the tested feature sets, and \textbf{(b)}: All classifier types trained on the complete feature set. We plot each model's generalised entropy index for a given sensitivity value (y-axis) against that sensitivity value (x-axis). A lower value on the y-axis indicates a more fair distribution of 'benefit', i.e. of receiving a positive prediction. A theoretical 'perfect' model would yield a single point $(0,1)$ in the lower-right corner of the plot. }
+    \label{fig:entropy}
+\end{figure}
+
+\section*{Discussion} In a large cohort of ED admissions, we developed and validated predictive models that can differentiate patients likely to deteriorate shortly after admission. GBDT methods received the most focus as they are state-of-the-art for sparse classification tasks (even compared to deep neural networks \cite{Borisov21}), they can capture non-linear interactions such as those present in clinical data, and they natively incorporate missing values, which are inevitable under typical clinical workflows. Using our trained models' coefficients and the extracted global justifications, we can identify which characteristics of our cohort were most predictive of the tracked clinical outcome both on the patient level and across the studied population. Features that encode the clinical context of the patient's condition, presentation, and comorbidities stood out as the most useful. These included presenting complaints, triage decisions such as the utilisation of SDEC, and the assigned clinical speciality, among others. Patient age stood out for being inversely correlated with our tracked outcome, against clinical intuition \cite{Metlay97}, which we theorise results from the low prevalence of the outcome within the highest age band. While it did not result in the model amplifying unfair bias, it presents a clear example of model interpretability revealing spurious associations that might require correcting prior to deployment.
+
+This study differs further from prior literature in using as representative a data sample as possible and in prioritising practical concerns. Our cohort, with patients of varied acuity and conditions, reflects a typical real world ED acute medical workload. Frontline staff collected the patient data under everyday conditions, where operational pressures affect the timeliness and reliability of data entry. We excluded little data since, although comprehensive manual data curation is helpful for model development, it conflicts with scalable deployment and real-time use of data-driven systems \cite{Meyer18} and can lead us to discard valuable information for uncommon cases \cite{Rajkomar18}. We did not carry out a priori feature selection but instead used all available data and employed modelling methods that perform intrinsic feature selection and can differentiate useful features based on evidence. Healthcare digitalisation is an ongoing process \cite{NHS19}, so we made no assumptions about the level of EPR integration. Instead, through our experiments with different feature sets, we accommodate different levels of data availability. The lack of a standardised benchmark dataset makes direct comparisons between studies on this topic challenging, so we minimised centre-specific assumptions and standardised our modelling pipelines' structure to establish reproducibility.
+
+We similarly designed our assessment methodology around the extant practical challenges and presented results with the context of their resource cost. We used a temporal split of the study data to assess performance but retained the records where the patient had presented to the same ED during the training period as frequent repeat attendees reflect the reality of clinical practice. To strengthen our results, however, we also examined removing these records and still demonstrated good performance. Calibration is often underappreciated \cite{Gerry20}, and alert frequency deserves attention as alert fatigue is a key critique aimed at existing solutions from frontline staff \cite{Obrien20}. We focused on measuring discriminative skill and avoided setting a threshold for positive or negative classifications, as setting it carries clinical, operational, and ethical complications. Directing care where it is needed promptly is vital and far outweighs the cost of false positives. However, excessive false alarms are detrimental to a model’s utility due to alert fatigue \cite{Ancker17, Kolic15, Bedoya19}. Balancing clinical risk against available capacity is a well-researched problem beyond the scope of our study \cite{Calster18, Azcarate20}; instead, we argue that early-stage researchers should aim to maximise the discriminative skill of their model, as might be measured by AUROC or the highest achievable sensitivity while preserving acceptable specificity.
+
+Our observational dataset is limited to one acute secondary care centre, but many measured parameters and outcomes vary between providers. Even near-universal predictors such as vital signs may be measured differently. For example, manual measurement of respiratory rate is less precise than an electronic recording\cite{Kellett11}, provision of supplemental oxygen is subjective and depends on operational constraints, availability, guidelines, and expertise \cite{Kasereka20}, and the same oxygen saturation may represent different levels of clinical risk depending on whether it was measured before or after commencing oxygen \cite{Cuthbertson07}. Furthermore, we recorded symptoms, vital signs, and laboratory results from the point of admission. This information gives a cross-sectional view of the patient’s condition as seen by the admitting clinician but excludes longitudinal information, which prior work has collected via continuous vital sign monitoring and used to train highly effective models \cite{Kao21, Lundberg18}. Finally, we investigated unfair bias and group inequalities in the models to the best of our ability but limited our assessment to the available protected characteristics. While patients face divergent clinical risks depending on characteristics such as sex, age, or ethnic background \cite{Iezzoni13C3}, finer data such as economic stability, education, community context, and other social determinants of health are also strong predictors of clinical risk \cite{Mahmoudi20}. We recommend that researchers investigate fairness thoroughly, especially if the models they construct are intended to autonomously screen or prioritise patients’ access to care, to ensure healthcare inequalities are not perpetuated \cite{Yu19}.
+
+There are key considerations researchers should take into account before adopting similar modelling methodologies. It is essential to consider the validity of jointly modelling outcomes and the reliability of any composite outcome as a surrogate for clinical deterioration. We considered critical care admission and mortality as a single outcome because we expect both to be preceded by deranged physiology, and the clinical response to both, in terms of urgency and skill, is similar \cite{Smith13}. The joint outcome served as a surrogate for any severe and time-sensitive medical condition encountered at the ED; this is a common modelling choice in the literature \cite{Gerry20, Levin18} and one we find reasonable, as our focus is on clinical escalation, which is the primary purpose of an EWS \cite{Morgan07}. However, critical care and mortality represent competing outcomes as the former intends to prevent the latter \cite{Wolbers09}. Future studies may prefer to avoid such assumptions and investigate multiclass modelling or compositing multiple binary classifiers, each trained to identify a single measurable outcome. Some features we utilised, such as triage outcomes, directly represent clinical decision-making. Their inclusion is in contrast with the 'one-size-fits-all' approach taken by the NEWS2 \cite{Inada18} or their explicit exclusion by some studies to avoid capturing and amplifying human-originated bias \cite{Meyer18}. If the purpose of a system is to 'sense-check' clinical decisions, its input data should ideally be as isolated as possible from those decisions. However, our findings show that these features efficiently stratify patient risk, making them valuable for producing reliable clinical risk estimates as long as the risks are made clear and considered.
+
+In conclusion, we demonstrated the development of predictive models on a large, real-world sample of general ED patients. Considering the high and rising pressures EDs face and the potential for missed diagnoses, models built from continuing our work could be clinically valuable for decision support. We contend that this study demonstrates the power of machine learning for modelling or adapting to patient populations for this task. By incorporating modularised modelling pipelines from contemporary machine learning practice and leveraging the advances in interpretable modelling, we encourage future research to follow a systematised model-building approach and help obtain clinically useful prognostic tools.
+
+\section*{Methods}
+\subsection*{Data Collection and Preparation}
+
+\begin{table}[htbp]
+    \centering
+    \renewcommand{\arraystretch}{1.2}
+
+    \begin{tabular}{llrrrr}
+        \toprule
+
+        \textbf{Group}                                                     & \textbf{Variable}              & Total             & Training          & Test (Complete)  & Test (Unseen)    \\
+        \midrule
+        \multirow{3}{*}{\textbf{Episode}}                                  & \textbf{LOS (days)}            & 2.27 (0.65-7.13)  & 2.06 (0.63-6.68)  & 2.88 (0.71-8.49) & 2.20 (0.55-7.50) \\
+                                                                           & \textbf{Patients}              & 62162             & 44752             & 25549            & 17410            \\
+                                                                           & \textbf{Records}               & 121058            & 81108             & 39950            & 23075            \\
+        \cline{1-6}
+        \multirow{4}{*}{\textbf{Outcomes}}                                 & \textbf{30-day Mortality}      & 3967 (3.28\%)     & 2589 (3.19\%)     & 1378 (3.45\%)    & 692 (3\%)        \\
+                                                                           & \textbf{Critical Care}         & 4012 (3.31\%)     & 2822 (3.48\%)     & 1190 (2.98\%)    & 716 (3.10\%)     \\
+                                                                           & \textbf{Critical Events}       & 8341 (6.89\%)     & 5489 (6.77\%)     & 2852 (7.14\%)    & 1537 (6.66\%)    \\
+                                                                           & \textbf{In-hospital Mortality} & 5124 (4.23\%)     & 3233 (3.99\%)     & 1891 (4.73\%)    & 965 (4.18\%)     \\
+        \cline{1-6}
+        \multirow{8}{*}{\textbf{Vitals}}                                   & \textbf{AVCPU-A}               & 119493 (98.71\%)  & 80013 (98.65\%)   & 39480 (98.82\%)  & 22827 (98.93\%)  \\
+                                                                           & \textbf{Assisted Breathing}    & 12167 (10.05\%)   & 7835 (9.66\%)     & 4332 (10.84\%)   & 2245 (9.73\%)    \\
+                                                                           & \textbf{NEWS}                  & 1 (0-2)           & 1 (0-2)           & 1 (0-2)          & 1 (0-2)          \\
+                                                                           & \textbf{Pulse (beats/min)}     & 80 (70-90)        & 80 (70-90)        & 80 (70-90)       & 80 (70-90)       \\
+                                                                           & \textbf{RR (breaths/min)}      & 17 (16-18)        & 17 (16-18)        & 18 (16-18)       & 17 (16-18)       \\
+                                                                           & \textbf{SpO2 (\%)}             & 97 (96-98)        & 97 (96-98)        & 97 (96-98)       & 97 (96-98)       \\
+                                                                           & \textbf{Systolic BP (mmHg)}    & 124 (113-139)     & 122 (112-138)     & 125 (114-140)    & 125 (114-140)    \\
+                                                                           & \textbf{Temperature (oC)}      & 36.70 (36.40-37)  & 36.70 (36.40-37)  & 36.70 (36.40-37) & 36.70 (36.40-37) \\
+        \cline{1-6}
+        \multirow{8}{2cm}{\textbf{Supplemental Observations \& Phenotype}} & \textbf{Age (years)}           & 69 (50-82)        & 69 (50-82)        & 68 (50-81)       & 64 (44-79)       \\
+                                                                           & \textbf{Diastolic BP (mmHg)}   & 70 (60-80)        & 70 (60-78)        & 70 (62-80)       & 70 (62-80)       \\
+                                                                           & \textbf{Female}                & 63414 (52.38\%)   & 42768 (52.73\%)   & 20646 (51.68\%)  & 11571 (50.15\%)  \\
+                                                                           & \textbf{FiO2 (\%)}             & 0 (0-0)           & 0 (0-0)           & 0 (0-0)          & 0 (0-0)          \\
+                                                                           & \textbf{Lying Down}            & 56565 (46.73\%)   & 36197 (44.63\%)   & 20368 (50.98\%)  & 11368 (49.27\%)  \\
+                                                                           & \textbf{Nausea}                & 1934 (1.60\%)     & 1407 (1.73\%)     & 527 (1.32\%)     & 278 (1.20\%)     \\
+                                                                           & \textbf{Pain}                  & 18504.0 (15.29\%) & 13308.0 (16.41\%) & 5196.0 (13.01\%) & 3227.0 (13.98\%) \\
+                                                                           & \textbf{Vomiting}              & 607 (0.50\%)      & 417 (0.51\%)      & 190 (0.48\%)     & 109 (0.47\%)     \\
+        \cline{1-6}
+        \multirow{5}{*}{\textbf{Labs}}                                     & \textbf{Creatinine (mmol/L)}   & 79 (63-105)       & 78 (63-103)       & 79 (64-106)      & 78 (63-100)      \\
+                                                                           & \textbf{Haemoglobin (g/L)}     & 130 (114-143)     & 129 (114-142)     & 130 (114-143)    & 132 (117-145)    \\
+                                                                           & \textbf{Potassium (mEg/L)}     & 4.20 (3.90-4.50)  & 4.20 (3.90-4.50)  & 4.20 (3.90-4.50) & 4.20 (3.90-4.50) \\
+                                                                           & \textbf{Sodium (mmol/L)}       & 138 (135-140)     & 138 (135-140)     & 138 (135-140)    & 138 (135-140)    \\
+                                                                           & \textbf{Urea (mmol/L)}         & 6.40 (4.60-9.60)  & 6.30 (4.60-9.40)  & 6.40 (4.60-9.70) & 6 (4.50-8.90)    \\
+        \cline{1-6}
+        \multirow{2}{2cm}{\textbf{Service Utilisation}}                    & \textbf{30-day Readmission}    & 15387 (12.71\%)   & 10732 (13.23\%)   & 4655 (11.65\%)   & 1919 (8.32\%)    \\
+                                                                           & \textbf{SDEC}                  & 29096 (24.03\%)   & 21020 (25.92\%)   & 8076 (20.22\%)   & 5719 (24.78\%)   \\
+        \bottomrule
+    \end{tabular}
+
+    \caption{\label{tab:data_summary} Summary statistics of the study sample. Numerical patient characteristics of acute medical unit admissions, chronologically partitioned into training and testing sets. "Test (Unseen)" corresponds to the chronologically split validation set but excluding patients who had any prior admissions in the training set. Binary variables are reported as "number of positives (\%)", while numerical variables are reported as quartiles.}
+\end{table}
+
+\paragraph{Study Setting.} Salford Royal Hospital is a digitally mature, 'paper light' NHS secondary care hospital with over $100,000$ emergency department attendances and $\sim 40,000$ unplanned admissions annually. The Hospital's EPR captures clinical episode data in real-time from arrival at the emergency department until discharge. Selected data are exported pseudonymously to an internal data warehouse to drive local quality improvement and service development projects. Our study considered all such records from 1st January 2015 to 31st March 2022. This starting date reflects the first calendar year after the introduction of electronic NEWS recording in the Hospital. We selected all patients aged $\geq 18$ years admitted to the Acute Medical Unit (at Salford, known as the Emergency Admissions Unit, EAU). Our data include patients who received ambulatory emergency care (AEC) and same-day emergency care (SDEC \cite{NHS18}) but exclude planned admissions and day case reviews. We present summary statistics of the dataset in Table \ref{tab:data_summary}, and further details of the collected categorical features in Supplementary Table 6.
+
+\paragraph{Data Collection.} As a routine part of EAU admission, the responsible staff member (nurse or support worker) records the patient's vital signs within a target of 30 minutes of arrival. The vital signs that make up the NEWS2 \cite{RCP17} are measured in a standardised manner using Dinamap monitors, and manually transcribed into EPR. These data are body temperature ($^{\circ}C$), heart rate (beats/min), systolic (and diastolic) blood pressure (mmHg), and peripheral oxygen saturation ($\%$). Other parameters are measured using manual observation and direct questions. These are the patient's level of consciousness (AVCPU), presence of pain, nausea, or vomiting, whether the patient was receiving oxygen at the time of SpO2 measurement and, if applicable, the oxygen flow rate and mode of delivery.
+
+Independent of this, blood test results are automatically recorded in the laboratory information management system (LIMS) and copied to EPR in real time. Whether a patient receives routine blood tests depends on operational pressures and considerations at the ED, not on the patient's presentation. Other information available upon arrival at the EAU includes identifier data such as the unique patient number; basic phenotypic information, such as their age and sex; admission pathway (e.g., ED, emergency GP referral); arrival time; and unstructured notes indicating their presenting complaint and the ED staff's primary diagnosis. For patients with prior hospital visits, significant comorbidities and previous admission events are available from the point of admission.
+
+\paragraph{Retrospective Data Augmentation.} Following initial collection, our data are supplemented with downstream administrative and outcome information, including ICD-10, OPCS-4, and HRG codes, alongside service utilisation records, 30-day readmission, and community mortality events. The date and time of discharge, the total length of stay (LOS), the wards the patient was admitted to (in chronological order), and the LOS per ward are collated upon the patient’s discharge. Each record includes up to seven concurrent diagnoses, represented by 4-7-character alphanumeric codes per the ICD-10-CM standard. These diagnoses are compiled after discharge by a clinical coding team based on the existing codes and clinical notes recorded in EPR. Procedures and service utilisation are similarly recorded in detail in EPR and coded in retrospect using the OPCS-4 standard.
+
+\paragraph{Feature Engineering.} Some of the collected data is not directly clinically relevant or may be unsuitable for modelling under a realistic use case. However, we can use it to engineer useful features or delineate subpopulations in the cohort for more detailed model evaluation. Other features are relevant but first require cleaning or modification. We derive the following features:
+\begin{itemize}
+    \item 30-day Readmission. We mark as readmissions those patient records that are preceded by a record bearing the same unique patient ID if the two records’ admission dates are $\leq$ 30 days apart.
+    \item Unstructured Clinical (ED) Notes. The presenting complaint and ED diagnosis are unstructured text and thus could hold any string value. We cluster presenting complaints into a categorical variable representation since the 50 most frequent values account for nearly all records ($97.06\%$), and we assign the remainder a sentinel value. In contrast, the ED diagnosis varies greatly between records, so we compile a list of clinically relevant word stems and abbreviations based on expert opinion and construct a boolean Bag-of-Words vector for each record indicating which ones are present. We provide the prevalent presenting complaint values and diagnosis stems in Supplementary Table 6.
+    \item Vital Signs. We investigate training models directly on vital sign readings or encoding them into integers $0-3$ per the NEWS2 severity scales \cite{RCP17}. The former approach forces models to form evidence-based weightings for values that correlate with adverse patient outcomes, while the latter allows us to incorporate the domain knowledge embedded in the NEWS2 into the models. Recorded vitals must be checked for spurious values as they are the only parameters transcribed into EPR manually under a typical workflow. We check each record against fixed ranges (e.g., 0-100$\%$ for SpO2) and soft thresholds based on the range of physiologically possible values determined by expert clinical opinion. We provide further details on filtering these values in Supplementary Table 4.
+\end{itemize}
+
+\paragraph{Data Labelling.} Our tracked outcome is a composite of in-hospital mortality or admission to critical care from the ward within a specified time threshold after presenting to the ED. The criteria to identify patient episodes that belong in the positive class are:
+\begin{enumerate}
+    \item The episode is not excluded by our filtering criteria, i.e. they have at least recorded vital signs, are $\geq 18$ years old, are not pregnant, and did not receive critical care interventions on-arrival.
+    \item The discharge/end-of-episode record indicates the patient died in the hospital AND the record's timestamp is within 24 hours of the admission timestamp, OR their service utilisation indicates admission to critical care or provision of critical interventions on the ward AND this occurred within 24 hours of the admission timestamp.
+\end{enumerate}
+We identify critical care based on recorded admission into the hospital's critical care unit (CCU) or the high-dependency medical unit (H1). We use the length-of-stay per ward to determine how long after the patient's arrival they were admitted to critical care. A smaller subset of patients received critical care interventions without being moved to these wards, and we can detect most such cases through specific entries in their recorded procedures - OPCS-4 codes E85.1 (invasive ventilation), X50.3 (advanced cardiac pulmonary resuscitation), X50.4 (external ventricular defibrillation), or X56.* (intubation of the trachea).
+
+\subsection*{Model Development.}
+\paragraph{Modelling Pipeline.} We adopt a modularised model-building approach from contemporary machine learning practice. We consider \emph{pipelines} as sequences of distinct tasks in the model-building process, where each task's output becomes the subsequent task's input. Some tasks modify the data samples in preparation for modelling. At least one task in each pipeline is a learning/model-building algorithm. Then, subsequent post-processing tasks may alter the predictive model's output or aggregate multiple models. We implement the following tasks, executed in order:
+
+\begin{enumerate}
+    \item Data Pre-processing. Executes the data preparation tasks outlined previously to produce a vector representing each patient episode. We parameterise the processing component to include only the features we specify, so we may investigate selectively including features and the impact they have on performance. The sets of features we consider are listed in Table \ref{tab:feature_sets}.
+
+    \item Data Splitting. Partitions the data into two subsets; we use one for model construction and reserve the second for validation. We prefer a temporal train-test split over standard random splitting \cite{Altman00}, and partition the dataset such that the first $2/3$ of records chronologically serve as the training set and the latter $1/3$ as the validation set. For some experiments we implement an additional filter that excludes any validation set records where the patient, as identified by their unique ID, had also appeared in the training set in a previous admission.
+
+    \item Data Imputation. Supplements standard values into data samples with empty fields. We apply this only to those modelling algorithms that are incompatible with missing data in their inputs (logistic regression). We impute numerical features with the median over the training dataset and binary and categorical variables with appropriate constant values. The imputed values correspond to a patient in stable condition.
+
+    \item Model Construction. A learning algorithm receives the data samples and produces a predictive model.
+    \item Calibration. As a post-processing step, we map the numerical outputs of the trained predictive model into well-calibrated probabilities, substituting the model's original output $C(\bm{x_i})$ on input $\bm{x_i}$ for an estimate of $Pr(y_i=1|C(\bm{x_i}))$, the conditional probability of belonging to class $y_i$. We opt for isotonic calibration \cite{Niculescu05} and fit a meta-estimator that learns the isotonic (monotonically increasing) mapping $m$ that minimises a loss function $\pazocal{L} = \sum_i w_i(y_i - m(C(\bm{x_i}))^2$.
+\end{enumerate}
+
+\begin{table}[htbp]
+    \centering
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabular}{p{0.2\linewidth} | p{0.75\linewidth}}
+        \toprule
+        \textbf{Feature Set}                    & \textbf{Features (Units)}                                                                                                                                                                                           \\ \midrule
+        \textbf{Vital signs (NEWS2)}            & Body temperature ($^{\circ}C$), heart rate (beats/min), systolic blood pressure (mmHg), peripheral oxygen saturation ($\%$)                                                                                         \\
+        \textbf{Supplemental Obs. \& Phenotype} & Sex (M/F), Age (years), Diastolic blood pressure (mmHg), breathing device (if applicable), prescribed oxygen (FiO2), presence of pain (Y/N), presence of nausea (Y/N), presence of vomiting (Y/N), lying down (Y/N) \\
+        \textbf{Clinical Notes}                 & Presenting complaint (text), ED diagnosis (text)                                                                                                                                                                    \\
+        \textbf{Laboratory Results}             & Haemoglobin (g/L), urea (serum, mmol/L), sodium (serum, mmol/L), potassium (serum, mEq/L), creatinine (mcmol/L)                                                                                                     \\
+        \textbf{Service Utilisation}            & Triaged to SDEC (Y/N), readmission within 30 days (Y/N), admission speciality (category), admission pathway (category)                                                                                              \\
+        \bottomrule
+    \end{tabular}
+    \caption{Dataset features and units categorised into feature sets. In the given units, "Y/N" indicates binary variables, "category" un-ordered categorical variables, "text" unstructured text data, and "M/F" indicates male or female.}
+    \label{tab:feature_sets}
+\end{table}
+
+\paragraph{Model Training and Tuning.} We construct pipelines with each combination of available components. For each one, we execute a single-objective Bayesian optimisation process (Tree-Structured Parzen approach \cite{Bergstra11}) to sweep over the space of possible hyperparameter values and probabilistically settle on values that maximise our chosen performance metric, average precision. We construct the final models using the best-scoring hyperparameters after $1000$ tuning iterations. We report the resultant hyperparameters in Supplementary Table 5. We avoid training the calibration meta-estimator on the same data that trained the classifier and, instead, we combine calibration with k-fold cross-validation. We randomly separate the training dataset into $k$ equal-sized partitions (setting parameter $k=5$), train a model on four of the subsets and fit the calibrator using the remaining subset. We iteratively repeat this $k$ times to such that each partition serves as the calibration set once and produce $k$ independent models to serve as sub-estimators of a model ensemble. The final 'representative' probability prediction of the ensemble $C$ of sub-estimators $C_1, \cdots, C_k$ for input vector $\bm{x}$ is taken to be the arithmetic mean of the sub-estimators' predictions: $C(\bm{x}) = \frac{1}{k} \sum^k_{i=1} C_{i}(\bm{x})$.
+
+\paragraph{Model Evaluation.} We assess the discriminative skill of the models by constructing the precision-recall curve and measuring the average precision, which is the mean of the PPV (or precision) over the interval of sensitivity (TPR/recall) values from 0-1. We approximate this with the weighted mean of the measured PPV across the observed sensitivity thresholds, where the weight of each element is the difference in sensitivity from the previous element \cite{Boyd13}.
+\begin{equation*}
+    AP = \int_0^1 p(r)dr \approx \sum^n_{k=1} P(k)\Delta r(k)
+\end{equation*}
+where $p(r)$ is the PPV as a function of sensitivity $r$, $P(k)$ is the precision at cut-off $k$ in the ranked sequence of data samples in the validation dataset, and $\Delta r(k)$ is the difference in recall $r_k - r_{k-1}$. We calculate the confidence intervals for our estimate of the AP by bootstrapping with $1000$ bootstrap samples over the validation set \cite{Kohavi95}. We construct the PR curve by plotting the PPV on the y-axis against sensitivity on the x-axis \cite{Davis06}. On the PR curve, an unskilled model giving random outputs would yield a horizontal line at $y=P/(P+N)$, where $P$ and $N$ are the numbers of positive and negative samples in the data, respectively, while a theoretical 'perfect' model would yield a single point $(1,1)$ in the upper-right corner of the plot.
+
+We construct the receiver-operating characteristics (ROC) curve and compute the area under the receiver operating curve (AUROC). We plot the false-positive rate (1 minus the specificity) on the x-axis against the sensitivity on the y-axis. The minimum possible area under the curve is $0.5$, corresponding to a completely random relationship between the model’s output and the ground truth. Generally, $0.7-0.8$ indicates reasonable discrimination, and values over $0.8$ indicate good discrimination \cite{Smith13}. We compute confidence intervals for the AUROC as before.
+
+The ROC and PR curves both provide a model-wide evaluation and, while the ROC curve is more common, we prefer the PR curve because it better indicates the skill of the model at predicting the minority (positive) class correctly and is less influenced by predicting the majority (negative) class correctly \cite{Saito15}. The PR curve further allows us to visually inspect how quickly PPV deteriorates as we increase model sensitivity \cite{Davis06}, which is helpful in a task where it may be appropriate to value sensitivity over specificity.
+
+Finally, we investigate how a model’s daily alert rate varies with sensitivity \cite{Romero21}. We construct an alert rate curve by plotting the alert rate (the number of positive predictions divided by the number of days) on the y-axis over sensitivity on the x-axis. The point where two lines intersect corresponds to the maximum achievable sensitivity for which the model with the lower line maintains a lower daily alert rate than the model with the upper line.
+
+%\paragraph{Model Interpretation} Todo.
+
+\paragraph{Model Bias} We investigate two forms of undesirable bias: individual, representing how dissimilarly we treat individuals who deserve similar outcomes \cite{Dwork12}, and group-based, measuring the inequality of predictions between demographic groups defined by protected characteristics \cite{Binns20}. The generalised entropy index\cite{Speicher18} applies to both notions concurrently. Given a patient record $\bm{x}_i$ with ground-truth outcome $y_i$, we define the \emph{benefit} experienced by the patient due to model prediction $C(\bm{x}_i)$ as:
+\begin{equation*}
+    b_i = y_i - C(\bm{x}_i) +1
+\end{equation*}
+Under this representation, a false-positive patient experiences a large benefit ($b=2$), while a false-negative that the model missed has the heaviest penalty ($b=0$). Then, given the vector of benefit values over the validation set, $\bm{b} = (b_1, b_2, \cdots, b_n)$, and their arithmetic mean $\mu(\bm{b})$, we measure the generalised entropy index fairness score $\mathcal{E}^2_{\bm{b}}$, where:
+\begin{equation*}
+    \mathcal{E}^{\alpha}(\bm{b}) = \frac{1}{n \alpha (\alpha-1)} \sum_{i=1}^n \left(\left( \frac{b_i}{\mu(\bm{b})} \right)^{\alpha}-1 \right)
+\end{equation*}
+Furthermore, given protected groups $g \in G$, with each comprising $n_g$ patient records with benefit vectors $\bm{b}^g = (b^g_1, b^g_2, \cdots, b^g_{n_g})$, we decompose the generalised entropy into its between-group component $\mathcal{E}^2_{\beta}$ and its within-group component $\mathcal{E}^2_{\omega}$, representing group and individual fairness, respectively. We measure the between-group component $\mathcal{E}^2_{\beta}$, where:
+
+\begin{equation*}
+    \mathcal{E}^{\alpha}_{\beta}(\bm{b}) = \mathcal{E}^{\alpha}(\bm{b}) - \mathcal{E}^{\alpha}_{\omega}(\bm{b}) = \sum^{\abs{G}}_{g=1} \frac{n_g}{n \alpha (\alpha-1)} \left(\left( \frac{\mu(\bm{b}_g)}{\mu(\bm{b})} \right)^{\alpha}-1 \right)
+\end{equation*}
+We define demographic groups based on the available protected characteristics - age and biological sex.  We partition the continuous age variable into age groups, as illustrated in Supplementary Figure 7. For both scores, the ideal value is $0$ and higher values indicate unfair classification.
+
+We additionally compute the differential fairness bias amplification exhibited by our models \cite{Foulds20}. The differential fairness metric is defined from the standpoint of intersectionality, i.e., equally protecting population sub-groups defined by multiple overlapping protected characteristics. Bias amplification measures a predictive model's unfairness compared to any pre-existing bias reflected in the dataset due to inequality in the real-life generative process of the data. Given a set of patient records $\bm{x}$ and protected groups $(g_i, g_j) \in G \times G$, the (smoothed) differential fairness $\varepsilon$ of a classifier $C$ is defined by the relation:
+\begin{equation*}
+    e^{-\varepsilon} \leq \frac{\sum_{\bm{x} \in g_i} C(\bm{x}) + \alpha}{\abs{g_i} + \abs{R_Y}\alpha} \frac{\abs{g_j} + \abs{R_Y}\alpha}{\sum_{\bm{x} \in g_j} C(\bm{x}) + \alpha} \leq e^{\varepsilon}
+\end{equation*}
+where $\abs{R_Y} \alpha$ is the Dirichlet smoothing concentration parameter (we set $\alpha = 1.0$, assuming no prior information). Then, the bias amplification metric is defined as the difference $\varepsilon_{C} - \varepsilon_{D}$ of the differential fairness value for the model $C$ minus the value for the dataset $D$'s ground truth.  A negative bias amplification indicates that the predictive model reduces differential unfairness, while a positive value means the estimator is more biased than the original data.
+
+
+\section*{Data Availability}
+The data that facilitated the experiments of this study are provided by the Northern Care Alliance NHS Trust, but restrictions apply to the availability of this data, which were used under a data sharing agreement with Durham University for the current study, and so are not publicly available.
+
+\section*{Acknowledgements}
+The authors would like to thank Durham University, Biophysical Sciences Institute for supporting this work via the Summer Research Bursary.
+
+\section*{Author contributions statement}
+All authors carried out method and experimentation design. D.G. collected the data. S.B.L. carried out the experiments, summarised the results and prepared figures. All authors analysed and interpreted the results. S.B.L. wrote the manuscript text and all authors reviewed the manuscript.
+
+\bibliography{references}
+
+\end{document}
+
+\newpage
+\section*{Supplement}
+\subsection*{Data Preparation}
+\label{appendix:preprocessing}
+We filter all manually recorded data features using the ranges in Table \ref{tab:supp_news_valid_ranges}.
+Where a value is missing or falls outside these ranges, we replace it with a value inferred from the recorded NEWS2 sub-score. Specifically, we set it to be the midpoint of the relevant NEWS2 range. Where the sub-score has not been recorded but the raw value is present (and not invalid), we use the value to compute the NEWS2 sub-score ourselves.
+
+\begin{table}[htbp]
+    \caption{\label{tab:supp_news_valid_ranges} Valid ranges for manually recorded data features.}
+    \renewcommand{\arraystretch}{1.3}
+    \centering
+    \begin{tabular}{lll}
+        \toprule
+        Variable         & Range    & Unit        \\
+        \midrule
+        SpO2             & $40-100$ & $\%$        \\
+        Systolic BP      & $40-300$ & mmHg        \\
+        Diastolic BP     & $20-200$ & mmHg        \\
+        Temperature      & $25-45$  & $^{\circ}$C \\
+        Pulse            & $25-300$ & Beats/min   \\
+        Respiration Rate & $5-80$   & Breaths/min \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Furthermore, we apply the following feature-specific filtering:
+\begin{itemize}
+    \item \textbf{O2 Saturation (SpO2).} The NEWS2 specification gives two scales for this parameter \cite{RCP17}:
+          \begin{itemize}
+              \item $SpO2_1$: By default.
+              \item $SpO2_2$: For patients with a prescribed oxygen saturation requirement of $88-92\%$ (e.g., in patients with hypercapnic respiratory failure).
+          \end{itemize}
+          Since the choice of scale is determined by the responsible clinical staff on a case-by-case basis, we use the following criteria to infer which scale to use when re-computing the NEWS2 sub-score for SpO2:
+          \begin{itemize}
+              \item Patients receiving oxygen using NIV, as recorded directly or in their set of coded procedures (OPCS-4 E85.2).
+              \item Patients with COPD (as determined by ICD-10 coded diagnosis J44.*) AND receiving oxygen via Venturi 24 or 28.
+              \item Patients with COPD (as above) and SpO2 $<88\%$.
+          \end{itemize}
+          Finally, if the patient is receiving supplemental oxygen, there is ambiguity as to whether a high NEWS2 oxygen sub-score indicates very high or very low saturation. In that case, we mark the value as missing.
+
+    \item \textbf{Respiration Rate.} In addition to the range given in Table \ref{tab:supp_news_valid_ranges}, we assume triple-digit values to be erroneous entries of two-digit values (e.g., $250 \rightarrow 25.0$).
+
+    \item \textbf{Oxygen Flow Rate.} This supplemental parameter is recorded in mixed units (Litres/min or FiO2). We translate all values to FiO2 where possible:
+          \begin{itemize}
+              \item Values $1-15$ are inferred to be in Litres/min.
+              \item Decimal values are inferred to be FiO2, with the exception of $0.5$.
+              \item Values of $0.5$ and any remaining values are determined based on the device used to deliver the oxygen. Nasal cannula and simple mask correspond to Litres/min, while other devices correspond to FiO2.
+          \end{itemize}
+          We convert Litres/min to FiO2 using the formula $FiO2 = 0.2 + (Litres/min * 4)/100$.
+\end{itemize}
+
+\begin{figure}[htbp]
+    \centering
+    \includesvg[inkscapelatex=false, width=\linewidth]{images/age_sex_bars.svg}
+    \caption{Outcome distribution across age groups and biological sex. Each bar length represents the proportion of positive labels (identified deterioration outcomes) of the corresponding dataset that belonged to the indicated demographic group.}
+    \label{fig:supp_age_sex}
+\end{figure}
+
+\newpage
+
+\subsection*{Implementation}
+
+\begin{table}[htbp]
+    \caption{\label{tab:supp_hyperparameters} Hyperparameters for each model across the examined feature sets. These values were chosen using bayesian optimisation after 1000 iterations. Any omitted parameters were assigned their default values. }
+    \centering
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabular}{llrrrrr}
+        \toprule
+        \textbf{Model}                      & \textbf{Parameter}       & Vitals                   & \& Obs                   & \& Labs                  & \& Notes                 & \& Services              \\
+        \midrule
+        \textbf{LR}                         & \verb|class_weight|   & \verb|None|   & \verb|None|   & \verb|None|   & \verb|None|   & \verb|None|   \\
+        \cline{1-7}
+        \multirow{3}{*}{\textbf{LR-EN}}     & \verb|C|   & \verb|0.0592|   & \verb|8.4126|   & \verb|1.1313|  & \verb|8.2228|  & \verb|7.0032|  \\
+                                            & \verb|class_weight|  & \verb|None|  & \verb|None|  & \verb|None|  & \verb|None|  & \verb|None|  \\
+                                            & \verb|l1_ratio|  & \verb|0.4133|  & \verb|0.355|  & \verb|0.9356|  & \verb|0.5862|  & \verb|0.8086|  \\
+        \cline{1-7}
+        \multirow{2}{*}{\textbf{LR-L1}}     & \verb|C|  & \verb|4.1169|  & \verb|2.8061|  & \verb|7.6951|  & \verb|4.4909|  & \verb|0.2121|  \\
+                                            & \verb|class_weight|  & \verb|None|  & \verb|None|  & \verb|balanced|  & \verb|balanced|  & \verb|None|  \\
+        \cline{1-7}
+        \multirow{2}{*}{\textbf{LR-L2}}     & \verb|C|  & \verb|5.7762|  & \verb|8.6765|  & \verb|9.9825|  & \verb|9.9151|  & \verb|3.5386|  \\
+                                            & \verb|class_weight|  & \verb|None|  & \verb|None|  & \verb|None|  & \verb|None|  & \verb|None|  \\
+        \cline{1-7}
+        \multirow{9}{*}{\textbf{LightGBM}}  & \verb|colsample_bytree|  & \verb|0.6075|  & \verb|0.989|  & \verb|0.5526|  & \verb|0.4737|  & \verb|0.4804|  \\
+                                            & \verb|is_unbalance|  & \verb|True|  & \verb|False|  & \verb|False|  & \verb|False|  & \verb|False|  \\
+                                            & \verb|min_child_samples|  & \verb|120|  & \verb|147|  & \verb|73|  & \verb|23|  & \verb|147|  \\
+                                            & \verb|num_leaves|  & \verb|29|  & \verb|63|  & \verb|16|  & \verb|202|  & \verb|13|  \\
+                                            & \verb|reg_alpha|  & \verb|2.6785|  & \verb|0.0402|  & \verb|1.5138|  & \verb|8.8073|  & \verb|0.0001|  \\
+                                            & \verb|reg_lambda|  & \verb|9.9052|  & \verb|0.0009|  & \verb|0.0941|  & \verb|0.0024|  & \verb|9.5277|  \\
+                                            & \verb|scale_pos_weight|  & \verb|None|  & \verb|53|  & \verb|2|  & \verb|4|  & \verb|2|  \\
+                                            & \verb|subsample|  & \verb|0.8714|  & \verb|0.958|  & \verb|0.5702|  & \verb|0.9042|  & \verb|0.4902|  \\
+                                            & \verb|subsample_freq|  & \verb|4|  & \verb|4|  & \verb|1| & \verb|2| & \verb|1| \\
+        \cline{1-7}
+        \multirow{2}{*}{\textbf{LinearSVM}} & \verb|alpha| & \verb|0.0032| & \verb|0.0004| & \verb|0.0002| & \verb|0.0011| & \verb|0.0005| \\
+                                            & \verb|class_weight| & \verb|balanced| & \verb|None| & \verb|None| & \verb|None| & \verb|None| \\
+        \cline{1-7}
+        \multirow{11}{*}{\textbf{XGBoost}}  & \verb|alpha| & \verb|0.0| & \verb|0.0| & \verb|0.0| & \verb|0.0| & \verb|0.0| \\
+                                            & \verb|colsample_bytree| & \verb|0.8389| & \verb|0.6157| & \verb|0.6273| & \verb|0.4414| & \verb|0.597| \\
+                                            & \verb|eta| & \verb|0.0196| & \verb|0.0454| & \verb|0.0231| & \verb|0.0| & \verb|0.2193| \\
+                                            & \verb|gamma| & \verb|0.0| & \verb|0.0| & \verb|0.0005| & \verb|0.0| & \verb|0.0| \\
+                                            & \verb|grow_policy| & \verb|lossguide| & \verb|lossguide| & \verb|lossguide| & \verb|depthwise| & \verb|lossguide| \\
+                                            & \verb|lambda| & \verb|0.0372| & \verb|0.0019| & \verb|0.0624| & \verb|0.157| & \verb|0.3922| \\
+                                            & \verb|max_depth| & \verb|9| & \verb|7| & \verb|9| & \verb|9| & \verb|3| \\
+                                            & \verb|min_child_weight| & \verb|8| & \verb|9| & \verb|6| & \verb|5| & \verb|4| \\
+                                            & \verb|scale_pos_weight| & \verb|3| & \verb|6| & \verb|6| & \verb|15| & \verb|81| \\
+                                            & \verb|subsample| & \verb|0.2505| & \verb|0.7236| & \verb|0.4115| & \verb|0.3563| & \verb|0.9937| \\
+                                            & \verb|tree_method| & \verb|approx| & \verb|hist| & \verb|approx| & \verb|approx| & \verb|approx| \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\newpage
+\subsection*{Results}
+\begin{figure}[htbp]
+    \centering
+    \includesvg[inkscapelatex=false, width=\linewidth]{images/calib_curves.svg}
+    \caption{Calibration Curves for \textbf{(a)}: GBDT (LightGBM) across feature groups (concatenated incrementally) and \textbf{(b)}: All learning algorithms trained the complete feature set (equiv. "\& Services"). Curves are plotted from each model's prediction outputs for the complete testing set.}
+    \label{fig:supp_calib_curves}
+\end{figure}
+
+\begin{table}[htbp]
+    \centering
+    \caption{\label{tab:supp_data_categorical_summary} Summary of categorical features in the study sample. Each table section (except for ED Diagnosis) presents the 5 most prevalent values for each feature, with the remaining values represented by "Other".}
+    \renewcommand{\arraystretch}{1.2}
+
+    \begin{tabular}{llrrrr}
+        \toprule
+        \textbf{Variable}                              & \textbf{Value}               & Total            & Training        & Test (Complete) & Test (Unseen)   \\
+        \midrule
+        \multirow{6}{*}{\textbf{Admission Pathway}}    & \textbf{Booked Adm.}         & 1807 (1.49\%)    & 899 (1.11\%)    & 908 (2.27\%)    & 582 (2.52\%)    \\
+                                                       & \textbf{Emg. ED}             & 110627 (91.38\%) & 74530 (91.89\%) & 36097 (90.36\%) & 20461 (88.67\%) \\
+                                                       & \textbf{Emg. GP Ref.}        & 5866 (4.85\%)    & 3733 (4.6\%)    & 2133 (5.34\%)   & 1496 (6.48\%)   \\
+                                                       & \textbf{Emg. OPD}            & 898 (0.74\%)     & 631 (0.78\%)    & 267 (0.67\%)    & 149 (0.65\%)    \\
+                                                       & \textbf{Non-Emg. Transf.}    & 1180 (0.97\%)    & 792 (0.98\%)    & 388 (0.97\%)    & 279 (1.21\%)    \\
+                                                       & \textbf{Other}               & 680 (0.56\%)     & 523 (0.64\%)    & 157 (0.39\%)    & 108 (0.47\%)    \\
+        \cline{1-6}
+        \multirow{6}{*}{\textbf{Admission Specialty}}  & \textbf{ED}                  & 18319 (15.13\%)  & 12891 (15.89\%) & 5428 (13.59\%)  & 3761 (16.3\%)   \\
+                                                       & \textbf{Acute Int. Med.}     & 91025 (75.19\%)  & 59212 (73.0\%)  & 31813 (79.63\%) & 17568 (76.13\%) \\
+                                                       & \textbf{Gen. Surgery}        & 2612 (2.16\%)    & 2395 (2.95\%)   & 217 (0.54\%)    & 146 (0.63\%)    \\
+                                                       & \textbf{Nephrology}          & 3454 (2.85\%)    & 2281 (2.81\%)   & 1173 (2.94\%)   & 709 (3.07\%)    \\
+                                                       & \textbf{Other}               & 4415 (3.65\%)    & 3334 (4.11\%)   & 1081 (2.71\%)   & 745 (3.23\%)    \\
+                                                       & \textbf{Trauma \& Ortho.}    & 1233 (1.02\%)    & 995 (1.23\%)    & 238 (0.6\%)     & 146 (0.63\%)    \\
+        \cline{1-6}
+        \multirow{6}{*}{\textbf{Breathing Device}}     & \textbf{A - Air}             & 108851 (89.92\%) & 73233 (90.29\%) & 35618 (89.16\%) & 20830 (90.27\%) \\
+                                                       & \textbf{N - Nasal cannula}   & 8900 (7.35\%)    & 5547 (6.84\%)   & 3353 (8.39\%)   & 1654 (7.17\%)   \\
+                                                       & \textbf{Other}               & 1797 (1.48\%)    & 1410 (1.74\%)   & 387 (0.97\%)    & 221 (0.96\%)    \\
+                                                       & \textbf{RM - Reservoir mask} & 394 (0.33\%)     & 221 (0.27\%)    & 173 (0.43\%)    & 107 (0.46\%)    \\
+                                                       & \textbf{SM - Simple mask}    & 685 (0.57\%)     & 308 (0.38\%)    & 377 (0.94\%)    & 249 (1.08\%)    \\
+                                                       & \textbf{V28 - Venturi 28\%}  & 391 (0.32\%)     & 349 (0.43\%)    & 42 (0.11\%)     & 14 (0.06\%)     \\
+        \cline{1-6}
+        \multirow{6}{*}{\textbf{Presenting Complaint}} & \textbf{Other}               & 36819 (30.41\%)  & 26077 (32.15\%) & 10742 (26.89\%) & 6731 (29.17\%)  \\
+                                                       & \textbf{abdominal pain}      & 6413 (5.3\%)     & 4514 (5.57\%)   & 1899 (4.75\%)   & 1033 (4.48\%)   \\
+                                                       & \textbf{chest pain}          & 11585 (9.57\%)   & 7633 (9.41\%)   & 3952 (9.89\%)   & 2371 (10.28\%)  \\
+                                                       & \textbf{falls}               & 5278 (4.36\%)    & 3421 (4.22\%)   & 1857 (4.65\%)   & 950 (4.12\%)    \\
+                                                       & \textbf{other}               & 31485 (26.01\%)  & 21565 (26.59\%) & 9920 (24.83\%)  & 5432 (23.54\%)  \\
+                                                       & \textbf{shortness of breath} & 14865 (12.28\%)  & 9337 (11.51\%)  & 5528 (13.84\%)  & 2659 (11.52\%)  \\
+        \cline{1-6}
+        \multirow{13}{*}{\textbf{ED Diagnosis}}        & \textbf{collaps-}            & 1245 (1.03\%)    & 1245 (1.53\%)   & 0 (0\%)         & 0 (0\%)         \\
+                                                       & \textbf{confus}              & 356 (0.29\%)     & 356 (0.44\%)    & 0 (0\%)         & 0 (0\%)         \\
+                                                       & \textbf{cope}                & 592 (0.49\%)     & 348 (0.43\%)    & 244 (0.61\%)    & 150 (0.65\%)    \\
+                                                       & \textbf{dementia}            & 227 (0.19\%)     & 85 (0.1\%)      & 142 (0.36\%)    & 80 (0.35\%)     \\
+                                                       & \textbf{diarrh}              & 326 (0.27\%)     & 325 (0.4\%)     & 1 (0.0\%)       & 0 (0\%)         \\
+                                                       & \textbf{dizz-}               & 89 (0.07\%)      & 89 (0.11\%)     & 0 (0\%)         & 0 (0\%)         \\
+                                                       & \textbf{fall}                & 1461 (1.21\%)    & 1461 (1.8\%)    & 0 (0\%)         & 0 (0\%)         \\
+                                                       & \textbf{head}                & 2704 (2.23\%)    & 1992 (2.46\%)   & 712 (1.78\%)    & 434 (1.88\%)    \\
+                                                       & \textbf{mobility}            & 102 (0.08\%)     & 102 (0.13\%)    & 0 (0\%)         & 0 (0\%)         \\
+                                                       & \textbf{pain}                & 7162 (5.92\%)    & 7139 (8.8\%)    & 23 (0.06\%)     & 9 (0.04\%)      \\
+                                                       & \textbf{sudden}              & 1 (0.0\%)        & 1 (0.0\%)       & 0 (0\%)         & 0 (0\%)         \\
+                                                       & \textbf{tight}               & 5 (0.0\%)        & 5 (0.01\%)      & 0 (0\%)         & 0 (0\%)         \\
+                                                       & \textbf{vomit}               & 296 (0.24\%)     & 264 (0.33\%)    & 32 (0.08\%)     & 13 (0.06\%)     \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+
+\newpage
+\begin{table}[htbp]
+    \centering
+    \caption{\label{tab:supp_auc} AUROC (95\% bootstrapped confidence interval) of each classifier type trained on each feature set. 'Test (Complete)' indicates the full testing dataset, 'Test (Unseen)' the testing dataset excluding all patients that had admission records in the training set, and 'Delta' gives the difference (95\% bootstrapped confidence interval) in measured performance between the two datasets. }
+    \begin{tabular}{llrrrrrr}
+
+        \toprule
+        \textbf{Features}                     & \textbf{Estimator} & Test (Complete)           & Test (Unseen)             & Delta                          \\
+
+        \midrule
+        \textbf{Reference}                    & \textbf{NEWS2}     & 0.79837 (0.78178-0.81774) & 0.81211 (0.78853-0.83516) & -0.01374 (-0.02892 - -0.00001) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{Vitals}}      & \textbf{LR}        & 0.81202 (0.79589-0.82812) & 0.82302 (0.80074-0.84682) & -0.01375 (-0.02613-0.00152)    \\
+                                              & \textbf{LR-EN}     & 0.81084 (0.79487-0.82711) & 0.82240 (0.79999-0.84633) & -0.01433 (-0.02630-0.00110)    \\
+                                              & \textbf{LR-L1}     & 0.81202 (0.79587-0.82817) & 0.82300 (0.80067-0.84684) & -0.01371 (-0.02613-0.00152)    \\
+                                              & \textbf{LR-L2}     & 0.81204 (0.79593-0.82814) & 0.82302 (0.80070-0.84683) & -0.01373 (-0.02611-0.00153)    \\
+                                              & \textbf{LightGBM}  & 0.83451 (0.81795-0.84949) & 0.84203 (0.82264-0.86360) & -0.01110 (-0.02066-0.00401)    \\
+                                              & \textbf{LinearSVM} & 0.80991 (0.79308-0.82680) & 0.81609 (0.79223-0.84143) & -0.01150 (-0.02470-0.00489)    \\
+                                              & \textbf{XGBoost}   & 0.83810 (0.82243-0.85295) & 0.84792 (0.83019-0.86909) & -0.01432 (-0.02323 - -0.00065) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Obs}}      & \textbf{LR}        & 0.83622 (0.82009-0.85170) & 0.84324 (0.82577-0.86259) & -0.01140 (-0.02059-0.00670)    \\
+                                              & \textbf{LR-EN}     & 0.83645 (0.82043-0.85198) & 0.84346 (0.82612-0.86266) & -0.01140 (-0.02063-0.00673)    \\
+                                              & \textbf{LR-L1}     & 0.83633 (0.82028-0.85191) & 0.84337 (0.82579-0.86271) & -0.01144 (-0.02058-0.00676)    \\
+                                              & \textbf{LR-L2}     & 0.83621 (0.82002-0.85168) & 0.84324 (0.82580-0.86251) & -0.01139 (-0.02065-0.00666)    \\
+                                              & \textbf{LightGBM}  & 0.86770 (0.85390-0.88193) & 0.87881 (0.86276-0.89762) & -0.01402 (-0.02116-0.00076)    \\
+                                              & \textbf{LinearSVM} & 0.81734 (0.80009-0.83362) & 0.80908 (0.78420-0.83397) & -0.01264 (-0.02414-0.00700)    \\
+                                              & \textbf{XGBoost}   & 0.86855 (0.85494-0.88231) & 0.87920 (0.86105-0.89896) & -0.01472 (-0.02253 - -0.00123) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Labs}}     & \textbf{LR}        & 0.83829 (0.82257-0.85332) & 0.84489 (0.82329-0.86387) & -0.01094 (-0.02094-0.00506)    \\
+                                              & \textbf{LR-EN}     & 0.83848 (0.82249-0.85357) & 0.84495 (0.82355-0.86405) & -0.01076 (-0.02057-0.00537)    \\
+                                              & \textbf{LR-L1}     & 0.84601 (0.83053-0.86145) & 0.85271 (0.83039-0.87151) & -0.01042 (-0.01997-0.00472)    \\
+                                              & \textbf{LR-L2}     & 0.83826 (0.82263-0.85332) & 0.84484 (0.82330-0.86376) & -0.01095 (-0.02098-0.00508)    \\
+                                              & \textbf{LightGBM}  & 0.88789 (0.87566-0.90086) & 0.89579 (0.87922-0.91310) & -0.01215 (-0.01954-0.00080)    \\
+                                              & \textbf{LinearSVM} & 0.81036 (0.79234-0.82745) & 0.80485 (0.78289-0.82659) & -0.01146 (-0.02057-0.00578)    \\
+                                              & \textbf{XGBoost}   & 0.88099 (0.86808-0.89400) & 0.88979 (0.87112-0.90633) & -0.01266 (-0.02039-0.00064)    \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Notes}}    & \textbf{LR}        & 0.84874 (0.83381-0.86303) & 0.85299 (0.83578-0.87141) & -0.00879 (-0.01549-0.00595)    \\
+                                              & \textbf{LR-EN}     & 0.85112 (0.83649-0.86548) & 0.85363 (0.83651-0.87210) & -0.00705 (-0.01354-0.00785)    \\
+                                              & \textbf{LR-L1}     & 0.85621 (0.84200-0.87038) & 0.85986 (0.84446-0.87751) & -0.00734 (-0.01414-0.00693)    \\
+                                              & \textbf{LR-L2}     & 0.85086 (0.83647-0.86516) & 0.85360 (0.83637-0.87172) & -0.00726 (-0.01399-0.00744)    \\
+                                              & \textbf{LightGBM}  & 0.89065 (0.87932-0.90209) & 0.89731 (0.88408-0.91332) & -0.01079 (-0.01708-0.00224)    \\
+                                              & \textbf{LinearSVM} & 0.81852 (0.80439-0.83384) & 0.83075 (0.81248-0.85447) & -0.01783 (-0.02225 - -0.00194) \\
+                                              & \textbf{XGBoost}   & 0.88454 (0.87280-0.89649) & 0.89101 (0.87656-0.90610) & -0.01075 (-0.01679-0.00086)    \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Services}} & \textbf{LR}        & 0.89144 (0.87930-0.90370) & 0.89280 (0.87805-0.90846) & -0.00693 (-0.01128-0.00637)    \\
+                                              & \textbf{LR-EN}     & 0.89407 (0.88197-0.90623) & 0.89555 (0.88032-0.91168) & -0.00696 (-0.01114-0.00591)    \\
+                                              & \textbf{LR-L1}     & 0.89551 (0.88354-0.90677) & 0.89778 (0.88336-0.91315) & -0.00729 (-0.01167-0.00505)    \\
+                                              & \textbf{LR-L2}     & 0.89436 (0.88216-0.90637) & 0.89591 (0.88078-0.91169) & -0.00701 (-0.01120-0.00562)    \\
+                                              & \textbf{LightGBM}  & 0.92208 (0.91150-0.93140) & 0.92295 (0.91214-0.93775) & -0.00648 (-0.01088-0.00560)    \\
+                                              & \textbf{LinearSVM} & 0.86435 (0.84973-0.87873) & 0.85779 (0.84106-0.87776) & -0.00368 (-0.00907-0.01095)    \\
+                                              & \textbf{XGBoost}   & 0.91272 (0.90224-0.92283) & 0.91374 (0.90198-0.92932) & -0.00616 (-0.01027-0.00639)    \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{\label{tab:supp_ap}Average Precision (95\% bootstrapped confidence interval) of each classifier type trained on each feature set. 'Test (Complete)' indicates the full testing dataset, 'Test (Unseen)' the testing dataset excluding all patients that had admission records in the training set, and 'Delta' gives the difference (95\% bootstrapped confidence interval) in measured performance between the two datasets. }
+    \begin{tabular}{llrrrrrr}
+
+
+        \toprule
+        \textbf{Features}                     & \textbf{Estimator} & Test (Complete)           & Test (Unseen)             & Delta                          \\
+
+        \midrule
+        \textbf{Reference}                    & \textbf{NEWS2}     & 0.14620 (0.12840-0.16843) & 0.16527 (0.13716-0.19425) & -0.01906 (-0.03780-0.00128)    \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{Vitals}}      & \textbf{LR}        & 0.15654 (0.13472-0.18050) & 0.17224 (0.14391-0.20818) & -0.01688 (-0.03439-0.00583)    \\
+                                              & \textbf{LR-EN}     & 0.15472 (0.13326-0.17813) & 0.16963 (0.14095-0.20585) & -0.01602 (-0.03203-0.00650)    \\
+                                              & \textbf{LR-L1}     & 0.15637 (0.13463-0.18024) & 0.17201 (0.14379-0.20773) & -0.01683 (-0.03424-0.00581)    \\
+                                              & \textbf{LR-L2}     & 0.15654 (0.13472-0.18066) & 0.17208 (0.14379-0.20789) & -0.01675 (-0.03419-0.00589)    \\
+                                              & \textbf{LightGBM}  & 0.17902 (0.15677-0.20542) & 0.20573 (0.17860-0.24097) & -0.02778 (-0.04823 - -0.00317) \\
+                                              & \textbf{LinearSVM} & 0.15484 (0.13396-0.17888) & 0.17861 (0.14837-0.21558) & -0.01999 (-0.03769-0.00482)    \\
+                                              & \textbf{XGBoost}   & 0.17117 (0.15002-0.19579) & 0.19383 (0.16532-0.22807) & -0.02574 (-0.04103 - -0.00242) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Obs}}      & \textbf{LR}        & 0.25813 (0.22819-0.28952) & 0.30903 (0.27133-0.37279) & -0.05699 (-0.07260 - -0.02352) \\
+                                              & \textbf{LR-EN}     & 0.25743 (0.22782-0.28908) & 0.30870 (0.27093-0.37123) & -0.05701 (-0.07294 - -0.02303) \\
+                                              & \textbf{LR-L1}     & 0.25673 (0.22718-0.28836) & 0.30804 (0.26987-0.37190) & -0.05705 (-0.07247 - -0.02289) \\
+                                              & \textbf{LR-L2}     & 0.25767 (0.22815-0.28926) & 0.30914 (0.27135-0.37176) & -0.05721 (-0.07297 - -0.02316) \\
+                                              & \textbf{LightGBM}  & 0.31362 (0.28485-0.34723) & 0.37001 (0.32539-0.42758) & -0.06763 (-0.08137 - -0.02843) \\
+                                              & \textbf{LinearSVM} & 0.25792 (0.22883-0.28772) & 0.28442 (0.24230-0.35246) & -0.06619 (-0.08441 - -0.03117) \\
+                                              & \textbf{XGBoost}   & 0.30981 (0.28000-0.34358) & 0.36394 (0.32159-0.41987) & -0.06574 (-0.07730 - -0.02969) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Labs}}     & \textbf{LR}        & 0.25956 (0.22983-0.29112) & 0.30524 (0.26482-0.37422) & -0.05144 (-0.06715 - -0.02000) \\
+                                              & \textbf{LR-EN}     & 0.25752 (0.22833-0.28941) & 0.30210 (0.26191-0.37002) & -0.05019 (-0.06629 - -0.01838) \\
+                                              & \textbf{LR-L1}     & 0.24392 (0.21573-0.27720) & 0.28401 (0.24618-0.35152) & -0.04440 (-0.06184 - -0.00980) \\
+                                              & \textbf{LR-L2}     & 0.25893 (0.22947-0.29100) & 0.30484 (0.26505-0.37455) & -0.05161 (-0.06791 - -0.01961) \\
+                                              & \textbf{LightGBM}  & 0.31363 (0.28367-0.34813) & 0.36479 (0.31386-0.42422) & -0.06396 (-0.06988 - -0.01894) \\
+                                              & \textbf{LinearSVM} & 0.25743 (0.22934-0.28827) & 0.25249 (0.20524-0.32339) & -0.05987 (-0.08037 - -0.02942) \\
+                                              & \textbf{XGBoost}   & 0.31982 (0.28903-0.35317) & 0.37818 (0.33927-0.43446) & -0.06876 (-0.07788 - -0.03054) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Notes}}    & \textbf{LR}        & 0.26304 (0.23415-0.29418) & 0.31080 (0.26920-0.37828) & -0.05432 (-0.06790 - -0.02268) \\
+                                              & \textbf{LR-EN}     & 0.26395 (0.23514-0.29546) & 0.31155 (0.27015-0.37778) & -0.05416 (-0.06802 - -0.02305) \\
+                                              & \textbf{LR-L1}     & 0.24261 (0.21452-0.27399) & 0.28588 (0.24262-0.35254) & -0.04774 (-0.06149 - -0.01234) \\
+                                              & \textbf{LR-L2}     & 0.26380 (0.23494-0.29479) & 0.31169 (0.27030-0.37863) & -0.05444 (-0.06805 - -0.02321) \\
+                                              & \textbf{LightGBM}  & 0.32338 (0.29322-0.35592) & 0.37353 (0.32555-0.42557) & -0.06296 (-0.07043 - -0.02216) \\
+                                              & \textbf{LinearSVM} & 0.25459 (0.22619-0.28545) & 0.25961 (0.21181-0.32756) & -0.06210 (-0.07710 - -0.02972) \\
+                                              & \textbf{XGBoost}   & 0.29689 (0.26741-0.32912) & 0.34996 (0.31093-0.41418) & -0.06141 (-0.07232 - -0.02160) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Services}} & \textbf{LR}        & 0.46334 (0.42731-0.49760) & 0.47583 (0.41855-0.52883) & -0.03587 (-0.04615-0.00279)    \\
+                                              & \textbf{LR-EN}     & 0.46615 (0.43139-0.50070) & 0.47778 (0.41715-0.52816) & -0.03458 (-0.04480-0.00443)    \\
+                                              & \textbf{LR-L1}     & 0.45835 (0.42212-0.49458) & 0.46817 (0.40793-0.51891) & -0.03170 (-0.04219-0.00539)    \\
+                                              & \textbf{LR-L2}     & 0.46588 (0.43123-0.50015) & 0.47774 (0.41752-0.52838) & -0.03447 (-0.04454-0.00380)    \\
+                                              & \textbf{LightGBM}  & 0.51268 (0.47813-0.54589) & 0.52347 (0.46740-0.57071) & -0.03662 (-0.05118-0.00287)    \\
+                                              & \textbf{LinearSVM} & 0.44708 (0.41128-0.48127) & 0.43666 (0.39277-0.48465) & -0.03908 (-0.04888 - -0.00210) \\
+                                              & \textbf{XGBoost}   & 0.49718 (0.46321-0.53057) & 0.50369 (0.45329-0.55213) & -0.03409 (-0.04570-0.00897)    \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+    \centering
+    \includesvg[inkscapelatex=false, width=\textwidth,height=0.85\textheight,keepaspectratio]{images/timeseries_auc.svg}
+    \caption{AUROC of logistic regression (L2 penalty) and GBDT (LightGBM) across thresholds for labelling critical deterioration events. Each section \textbf{(a-e)} corresponds to incrementally including the indicated feature sets (from Methods Table \ref{tab:feature_sets}) as training data. For each one, and for each x-axis value, we train independent models to identify critical deterioration up to the corresponding number of days after admission and measure their AUROC on the validation set (y-axis). The lines in colour represent the performance for the indicated feature set, and the lines in gray represent the lines from the other sections for easier visual comparison. }
+    \label{fig:supp_auc_over_time}
+\end{figure}
+
+\newpage
+
+\begin{figure}[htbp]
+    \centering
+    \includesvg[inkscapelatex=false, width=\linewidth]{images/shap_categorical.svg}
+    \caption{SHAP feature importances for categorical feature values under the GBDT (LightGBM) model. Each bar shows the mean SHAP value for the indicated value of the corresponding categorical feature. Values to the right of $x=0$ (red) contribute, on average, towards predictions of deterioration, while values to the left (blue) contribute towards negative predictions (no deterioration). We provide the highest-ranked values per feature by mean absolute SHAP value. }
+    \label{fig:supp_shap_lightgbm_categorical}
+\end{figure}
+
+
+\begin{table}[htbp]
+    \centering
+    \renewcommand{\arraystretch}{1.2}
+    \caption{\label{tab:supp_lr_coefficients} Coefficients of numerical features in logistic regression models. LR: Logistic regression; LR-L1: LR with L1 penalty regularisation; LR-L2: LR with L2 penalty regularisation; LR-EN: LR with Elastic Net regularisation.}
+    \begin{tabular}{lrrrr}
+        \toprule
+        {}                          & LR        & LR-L1     & LR-L2     & LR-EN     \\
+        \midrule
+        \textbf{Sent To SDEC      } & $-1.0367$ & $-1.0309$ & $-1.0391$ & $-1.0384$ \\
+        \textbf{Sodium            } & $-0.8081$ & $-0.7383$ & $-0.8016$ & $-0.8073$ \\
+        \textbf{Age               } & $-0.546$  & $-0.4507$ & $-0.5434$ & $-0.5433$ \\
+        \textbf{FiO2              } & $-0.4453$ & $-0.4357$ & $-0.4423$ & $-0.4440$ \\
+        \textbf{SpO2              } & $-0.1996$ & $-0.1972$ & $-0.1994$ & $-0.1993$ \\
+        \textbf{Creatinine        } & $-0.1968$ & $-0.1889$ & $-0.1953$ & $-0.1950$ \\
+        \textbf{Assisted Breathing} & $-0.1301$ & $-0.1242$ & $-0.1292$ & $-0.1288$ \\
+        \textbf{30-day Readmission} & $-0.1131$ & $-0.0779$ & $-0.1144$ & $-0.1143$ \\
+        \textbf{Temperature       } & $-0.0525$ & $-0.0449$ & $-0.0517$ & $-0.0520$ \\
+        \textbf{Alert (AVCPU)     } & $-0.0456$ & $-0.0183$ & $-0.0408$ & $-0.0413$ \\
+        \textbf{Systolic BP       } & $-0.0205$ & $-0.0216$ & $-0.0212$ & $-0.0215$ \\
+        \textbf{Urea              } & $0.0075$  & $-0.0013$ & $0.0059$  & $0.0060$  \\
+        \textbf{Pain              } & $0.0766$  & $0.0748$  & $0.0790$  & $0.0785$  \\
+        \textbf{Nausea            } & $0.0796$  & $0.0407$  & $0.0798$  & $0.0791$  \\
+        \textbf{Diastolic BP      } & $0.1157$  & $0.0803$  & $0.1114$  & $0.1130$  \\
+        \textbf{Pulse             } & $0.1193$  & $0.1191$  & $0.1192$  & $0.1191$  \\
+        \textbf{Haemoglobin       } & $0.1403$  & $0.0989$  & $0.1384$  & $0.1384$  \\
+        \textbf{Vomiting          } & $0.1891$  & $0.1940$  & $0.1902$  & $0.1899$  \\
+        \textbf{Respiration Rate  } & $0.1976$  & $0.1984$  & $0.1971$  & $0.1975$  \\
+        \textbf{Female            } & $0.2662$  & $0.2556$  & $0.2664$  & $0.2670$  \\
+        \textbf{Lying Down        } & $0.3488$  & $0.3320$  & $0.3484$  & $0.3488$  \\
+        \textbf{Potassium         } & $0.9721$  & $0.4844$  & $1.4895$  & $0.6155$  \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{\label{tab:supp_lr_categorical_coefficients} Coefficients of categorical feature values in logistic regression models. We provide the 5 highest ranked values per feature by mean absolute coefficient over the presented models. LR: Logistic regression; LR-L1: LR with L1 penalty regularisation; LR-L2: LR with L2 penalty regularisation; LR-EN: LR with Elastic Net regularisation.}
+    \renewcommand{\arraystretch}{1.2}
+
+    \begin{tabular}{llrrrr}
+        \toprule
+        \textbf{Feature}                               & \textbf{Value}                 & LR      & LR-EN   & LR-L1   & LR-L2   \\
+        \midrule
+        \multirow{5}{*}{\textbf{ED Diagnosis}}         & \textbf{dementia}              & -5.7765 & -1.1784 & 0.0000  & -0.9183 \\
+                                                       & \textbf{dizz-}                 & -4.5919 & -0.5101 & 0.0000  & -0.5284 \\
+                                                       & \textbf{Unknown}               & 1.1955  & 0.5185  & 0.4662  & 0.6791  \\
+                                                       & \textbf{diarrh}                & 0.9823  & 0.2567  & 0.0000  & 0.4210  \\
+                                                       & \textbf{collaps-}              & 0.8968  & 0.2167  & 0.0000  & 0.3797  \\
+        \cline{1-6}
+        \multirow{5}{*}{\textbf{Admission Pathway}}    & \textbf{Emg. Tran. Oth. Prov.} & 1.1180  & 1.5083  & 0.8563  & 1.6927  \\
+                                                       & \textbf{Elective Booked}       & -2.8855 & -1.2208 & 0.0000  & -0.8683 \\
+                                                       & \textbf{Emg. OPD}              & -1.7830 & -1.2437 & 0.0000  & -0.9072 \\
+                                                       & \textbf{Booked Adm.}           & -1.5348 & -1.0707 & 0.0000  & -0.7858 \\
+                                                       & \textbf{Emg. ED}               & 0.4351  & 0.8734  & 0.9080  & 1.1078  \\
+        \cline{1-6}
+        \multirow{5}{*}{\textbf{Admission Specialty}}  & \textbf{General Med.}          & 6.0295  & 4.4717  & 4.5527  & 4.2806  \\
+                                                       & \textbf{Respiratory Med.}      & 5.7150  & 4.1316  & 3.7710  & 3.8547  \\
+                                                       & \textbf{Geriatric Med.}        & 5.1367  & 3.5265  & 2.4572  & 3.1878  \\
+                                                       & \textbf{Bariatric Surg.}       & 8.3252  & 2.2719  & 0.0000  & 1.7883  \\
+                                                       & \textbf{Spinal Surg. Svc.}     & -6.1272 & -2.0428 & 0.0000  & -1.5927 \\
+        \cline{1-6}
+        \multirow{5}{*}{\textbf{Breathing Device}}     & \textbf{NHF}                   & 3.1081  & 3.1803  & 3.0982  & 3.0330  \\
+                                                       & \textbf{Unknown}               & -5.8139 & -1.2859 & 0.0000  & -0.6555 \\
+                                                       & \textbf{A - Air}               & -1.4371 & -1.6811 & -1.3501 & -0.8618 \\
+                                                       & \textbf{NIV - NIV}             & 1.1222  & 1.2162  & 1.2235  & 1.1433  \\
+                                                       & \textbf{Other}                 & 0.8460  & 0.9446  & 1.1644  & 0.8756  \\
+        \cline{1-6}
+        \multirow{5}{*}{\textbf{Presenting Complaint}} & \textbf{ear problems}          & -6.0519 & -1.5286 & 0.0000  & -1.2409 \\
+                                                       & \textbf{facial problems}       & -5.5940 & -1.4631 & 0.0000  & -1.1675 \\
+                                                       & \textbf{gi bleeding}           & 2.8015  & 1.7446  & 1.3005  & 1.7253  \\
+                                                       & \textbf{diabetes}              & 2.7086  & 1.6517  & 1.1506  & 1.6313  \\
+                                                       & \textbf{testicular pain}       & -4.8856 & -0.9064 & 0.0000  & -0.8156 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{\label{tab:supp_bias_amp} Differential Fairness Bias Amplification (95\% bootstrapped confidence interval) of each classifier type trained on each feature set. The columns "Sex", "Age", and "Sex \& Age" indicate the protected characteristic for each measurement - biological sex,  age group (per Figure \ref{fig:supp_age_sex}), or both.  }
+    \begin{tabular}{llrrrrrr}
+
+        \toprule
+        \textbf{Features}                     & \textbf{Estimator} & Sex                      & Age                      & Sex \& Age               \\
+        \midrule
+        \multirow{7}{*}{\textbf{Vitals}}      & \textbf{LR}        & -0.240 (-0.374 - -0.115) & 0.107 (0.060 - 0.267)    & -0.213 (-0.343 - -0.010) \\
+                                              & \textbf{LR-EN}     & -0.240 (-0.373 - -0.114) & 0.110 (0.065 - 0.269)    & -0.211 (-0.337 - -0.007) \\
+                                              & \textbf{LR-L1}     & -0.240 (-0.374 - -0.115) & 0.106 (0.060 - 0.267)    & -0.214 (-0.344 - -0.011) \\
+                                              & \textbf{LR-L2}     & -0.240 (-0.374 - -0.115) & 0.107 (0.060 - 0.267)    & -0.213 (-0.343 - -0.011) \\
+                                              & \textbf{LightGBM}  & -0.245 (-0.396 - -0.123) & 0.030 (-0.019 - 0.194)   & -0.312 (-0.428 - -0.089) \\
+                                              & \textbf{LinearSVM} & -0.253 (-0.385 - -0.125) & 0.200 (0.142 - 0.359)    & -0.106 (-0.229 - 0.077)  \\
+                                              & \textbf{XGBoost}   & -0.242 (-0.392 - -0.125) & 0.089 (0.045 - 0.252)    & -0.250 (-0.348 - -0.036) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Obs}}      & \textbf{LR}        & 0.050 (-0.114 - 0.114)   & -0.483 (-0.554 - -0.287) & -0.617 (-0.773 - -0.441) \\
+                                              & \textbf{LR-EN}     & 0.050 (-0.115 - 0.113)   & -0.484 (-0.555 - -0.288) & -0.619 (-0.775 - -0.442) \\
+                                              & \textbf{LR-L1}     & 0.049 (-0.116 - 0.112)   & -0.484 (-0.555 - -0.288) & -0.619 (-0.774 - -0.442) \\
+                                              & \textbf{LR-L2}     & 0.051 (-0.115 - 0.114)   & -0.484 (-0.555 - -0.288) & -0.618 (-0.776 - -0.442) \\
+                                              & \textbf{LightGBM}  & 0.006 (-0.140 - 0.081)   & -0.320 (-0.407 - -0.138) & -0.465 (-0.622 - -0.302) \\
+                                              & \textbf{LinearSVM} & -0.147 (-0.271 - -0.055) & -0.687 (-0.750 - -0.554) & -1.016 (-1.111 - -0.826) \\
+                                              & \textbf{XGBoost}   & -0.022 (-0.174 - 0.058)  & -0.298 (-0.349 - -0.101) & -0.494 (-0.636 - -0.298) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Labs}}     & \textbf{LR}        & 0.074 (-0.098 - 0.143)   & -0.500 (-0.564 - -0.312) & -0.604 (-0.769 - -0.431) \\
+                                              & \textbf{LR-EN}     & 0.074 (-0.099 - 0.141)   & -0.499 (-0.562 - -0.311) & -0.602 (-0.771 - -0.431) \\
+                                              & \textbf{LR-L1}     & 0.095 (-0.079 - 0.168)   & -0.504 (-0.552 - -0.314) & -0.589 (-0.685 - -0.351) \\
+                                              & \textbf{LR-L2}     & 0.074 (-0.098 - 0.143)   & -0.499 (-0.564 - -0.312) & -0.602 (-0.768 - -0.430) \\
+                                              & \textbf{LightGBM}  & 0.034 (-0.123 - 0.111)   & -0.317 (-0.388 - -0.144) & -0.416 (-0.583 - -0.265) \\
+                                              & \textbf{LinearSVM} & -0.047 (-0.172 - 0.040)  & -0.592 (-0.671 - -0.406) & -0.660 (-0.805 - -0.464) \\
+                                              & \textbf{XGBoost}   & -0.015 (-0.165 - 0.067)  & -0.329 (-0.404 - -0.140) & -0.514 (-0.648 - -0.324) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Notes}}    & \textbf{LR}        & 0.065 (-0.110 - 0.139)   & -0.475 (-0.539 - -0.285) & -0.577 (-0.760 - -0.404) \\
+                                              & \textbf{LR-EN}     & 0.069 (-0.109 - 0.143)   & -0.476 (-0.543 - -0.286) & -0.573 (-0.761 - -0.402) \\
+                                              & \textbf{LR-L1}     & 0.076 (-0.104 - 0.155)   & -0.499 (-0.556 - -0.310) & -0.596 (-0.766 - -0.420) \\
+                                              & \textbf{LR-L2}     & 0.069 (-0.109 - 0.143)   & -0.476 (-0.542 - -0.286) & -0.573 (-0.761 - -0.401) \\
+                                              & \textbf{LightGBM}  & 0.013 (-0.132 - 0.084)   & -0.313 (-0.371 - -0.131) & -0.453 (-0.606 - -0.292) \\
+                                              & \textbf{LinearSVM} & -0.047 (-0.187 - 0.055)  & -0.657 (-0.733 - -0.514) & -0.885 (-0.996 - -0.694) \\
+                                              & \textbf{XGBoost}   & -0.061 (-0.215 - 0.017)  & -0.187 (-0.242 - -0.032) & -0.472 (-0.568 - -0.245) \\
+        \cline{1-5}
+        \multirow{7}{*}{\textbf{\& Services}} & \textbf{LR}        & 0.041 (-0.088 - 0.114)   & -0.454 (-0.532 - -0.241) & -0.588 (-0.734 - -0.372) \\
+                                              & \textbf{LR-EN}     & 0.047 (-0.085 - 0.120)   & -0.459 (-0.538 - -0.244) & -0.587 (-0.728 - -0.372) \\
+                                              & \textbf{LR-L1}     & 0.047 (-0.086 - 0.117)   & -0.456 (-0.543 - -0.239) & -0.584 (-0.721 - -0.374) \\
+                                              & \textbf{LR-L2}     & 0.050 (-0.083 - 0.123)   & -0.459 (-0.539 - -0.244) & -0.584 (-0.727 - -0.370) \\
+                                              & \textbf{LightGBM}  & 0.004 (-0.118 - 0.086)   & -0.263 (-0.312 - -0.048) & -0.396 (-0.501 - -0.212) \\
+                                              & \textbf{LinearSVM} & -0.137 (-0.229 - -0.043) & -0.579 (-0.647 - -0.399) & -0.878 (-0.959 - -0.627) \\
+                                              & \textbf{XGBoost}   & -0.005 (-0.122 - 0.078)  & -0.260 (-0.322 - -0.049) & -0.420 (-0.527 - -0.219) \\
+        \bottomrule
+    \end{tabular}
+
+\end{table}
+
+\begin{figure}[htbp]
+    \centering
+    \includesvg[inkscapelatex=false, width=\textwidth,height=0.9\textheight,keepaspectratio]{images/entropy_between.svg}
+    \caption{Between-Group Generalised Entropy vs Sensitivity curvesof \textbf{(a)}: GBDT across the tested feature sets, and \textbf{(b)}: All classifier types trained on the complete feature set. We plot the between-group component of the generalised entropy index, representing unfairness between demographic groups defined by the protected characteristics of age group and sex, per Figure \ref{fig:supp_age_sex}. The remainder of the generalised entropy, as presented in Figure \ref{fig:entropy} is the \emph{within-group} component, representing all other potential biases. A lower value on the y-axis indicates a more fair distribution of 'benefit', i.e. of receiving a positive prediction, between the demographic groups we consider. A theoretical 'perfect' model would yield a single point $(0,1)$ in the lower-right corner of the plot. }
+    \label{fig:supp_entropy_between}
+\end{figure}
+
