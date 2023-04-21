@@ -263,7 +263,9 @@ class SCIData(pd.DataFrame):
         return SCIData(self.join(icd10, on="MainICD10"))
 
     def derive_covid(
-        self, covid_codes=["U07.1", "J12.8", "B97.2"], start_date="2020-01-01",
+        self,
+        covid_codes=["U07.1", "J12.8", "B97.2"],
+        start_date="2020-01-01",
     ):
         """Derives a binary feature indicating whether the patient had COVID-19, based on their coded diagnoses.
         :param covid_codes: The ICD-10 codes to look for.
@@ -376,9 +378,11 @@ class SCIData(pd.DataFrame):
         return SCIData(r)
 
     def derive_sdec(
-        self, sdec_wards=["AEC", "AAA"], col_name="SentToSDEC",
+        self,
+        sdec_wards=["AEC", "AAA"],
+        col_name="SentToSDEC",
     ):
-        """ Determines whether the patient originally was admitted to SDEC but then stayed
+        """Determines whether the patient originally was admitted to SDEC but then stayed
         :param sdec_wards: The wards to search for. By default, ['AEC', 'AAA']
         """
         r = self.copy()
@@ -1003,7 +1007,10 @@ class SCIData(pd.DataFrame):
 
     def mandate(self, cols):
         return SCIData(
-            self.dropna(how="any", subset=set(cols).intersection(self.columns),)
+            self.dropna(
+                how="any",
+                subset=set(cols).intersection(self.columns),
+            )
         )
 
     def mandate_diagnoses(self, prefix="HSMR"):
@@ -1059,7 +1066,7 @@ class SCIData(pd.DataFrame):
     def onehot_encode_categories(self):
         r = self
         for col in self.select_dtypes(include="category").columns:
-            r = r.encode_onehot([col], prefix=col.replace("Description", ""))
+            r = r.encode_onehot([col], prefix=col)
         return r
 
     def derive_ae_diagnosis_stems(
@@ -1831,7 +1838,7 @@ class SCICols:
         "Sodium_serum": "Sodium",
         "Potassium_serum": "Potassium",
         "Creatinine": "Creatinine",
-        "AdmissionMethod": "Admission Pathway",
+        #  "AdmissionMethod": "Admission Pathway",
         "AdmissionMethodDescription": "Admission Pathway",
         "AdmissionSpecialty": "Admission Specialty",
         "SentToSDEC": "Sent To SDEC",

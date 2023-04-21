@@ -10,7 +10,8 @@ from dataset import SCICols
 
 def process_SCI(xlsx: pd.DataFrame) -> pd.DataFrame:
     df = xlsx.copy()
-
+    print(f'Initial dataset size: {df.shape[0]}')
+    
     # Remove spaces from column names
     df.columns = df.columns.str.replace(" ", "")
 
@@ -143,9 +144,13 @@ def process_SCI(xlsx: pd.DataFrame) -> pd.DataFrame:
 
     df = df.replace("nan", np.nan)
 
-    df = df[df.AdmissionDateTime >= pd.Timestamp('2015-01-01')]
+    mask = df.AdmissionDateTime < pd.Timestamp('2015-01-01')
+    df = df[~mask]
+    print(f'Removed {mask.sum()} episodes prior to Jan 1st, 2015: {df.shape[0]}')
 
-    df = df[~df.AdmissionMethodDescription.isin(['TRAUMA ELECTIVE ADM', 'MATERNITY ANTE NATAL', 'WAITING LIST'])]
+    mask = df.AdmissionMethodDescription.isin(['TRAUMA ELECTIVE ADM', 'MATERNITY ANTE NATAL', 'WAITING LIST'])
+    df = df[~mask]
+    print(f'Removed {mask.sum()} maternity, trauma, waiting list admissions: {df.shape[0]}')
 
     return df[SCICols.ordered()].reset_index(drop=True)
 

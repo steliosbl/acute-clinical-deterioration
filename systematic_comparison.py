@@ -61,7 +61,7 @@ def study_grid_from_args(args, scii):
             Estimator_OneClassSVM,
             Estimator_L1Regression,
             Estimator_L2Regression,
-            Estimator_ElasticNetRegression
+            Estimator_ElasticNetRegression,
         ],
         gpu=[Estimator_TabNet],
     )
@@ -80,7 +80,7 @@ def study_grid_from_args(args, scii):
             "with_notes_and_labs",
             "scores_with_notes_and_labs",
             "with_notes_labs_and_hospital",
-            "scores_with_notes_labs_and_hospital"
+            "scores_with_notes_labs_and_hospital",
         ]
         features = {_: features[_] for _ in select}
 
@@ -144,7 +144,12 @@ class PipelineFactory:
     def __call__(self, **kwargs):
         steps = []
         if self.resampler is not None:
-            steps.append((self.resampler._name, self.resampler.factory(),))
+            steps.append(
+                (
+                    self.resampler._name,
+                    self.resampler.factory(),
+                )
+            )
 
         if self._scaler:
             steps.append(
@@ -233,7 +238,9 @@ def evaluate_model(model, X_test, y_test, n_resamples):
     return metrics, y_pred_proba
 
 
-def get_xy(scii, estimator, features, outcome_within=1, outcome='CriticalEvent'):
+def get_xy(
+    scii, estimator, features, outcome_within=1, outcome="CriticalEvent", split=True
+):
     sci_args = dict(
         x=features,
         imputation=estimator._requirements["imputation"],
@@ -241,10 +248,13 @@ def get_xy(scii, estimator, features, outcome_within=1, outcome='CriticalEvent')
         ordinal_encoding=estimator._requirements["ordinal"],
         fillna=estimator._requirements["fillna"],
         outcome_within=outcome_within,
-        outcome=outcome
+        outcome=outcome,
     )
 
     X, y = scii.xy(**sci_args)
+    if not split:
+        return X, y
+
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.33, random_state=42, shuffle=False
     )
@@ -264,17 +274,22 @@ def construct_study(
     model_persistence_path=None,
     cv_jobs=1,
     n_trials=100,
-    outcome='CriticalEvent',
+    outcome="CriticalEvent",
     **kwargs,
 ):
-    X_train, X_test, y_train, y_test = get_xy(scii, estimator, features, outcome_within, outcome)
+    X_train, X_test, y_train, y_test = get_xy(
+        scii, estimator, features, outcome_within, outcome
+    )
     name = f"{estimator._name}_{resampler._name if resampler else 'None'}_Within-{outcome_within}_{feature_group}"
     study = optuna.create_study(
         direction="maximize", study_name=name, storage=storage, load_if_exists=True
     )
 
     pipeline_factory = PipelineFactory(
-        estimator=estimator, resampler=resampler, X_train=X_train, y_train=y_train,
+        estimator=estimator,
+        resampler=resampler,
+        X_train=X_train,
+        y_train=y_train,
     )
 
     objective = Objective(
@@ -306,10 +321,15 @@ def construct_study(
         )
         if estimator._requirements["calibration"]:
             model = CalibratedClassifierCV(
-                pipeline_factory(**params), cv=cv, method="isotonic", n_jobs=cv_jobs,
+                pipeline_factory(**params),
+                cv=cv,
+                method="isotonic",
+                n_jobs=cv_jobs,
             ).fit(X, y)
             if explain:
-                explanations = estimator.explain_calibrated(model, X, X_test, cv_jobs=cv_jobs)
+                explanations = estimator.explain_calibrated(
+                    model, X, X_test, cv_jobs=cv_jobs
+                )
         else:
             model = pipeline_factory(**params).fit(X, y)
             if explain:
@@ -400,9 +420,7 @@ parser.add_argument("-v", "--verbose", help="Optuna verbosity", action="store_tr
 parser.add_argument(
     "--select_features", help="Limit feature groups", action="store_true"
 )
-parser.add_argument(
-    "--outcome", help='The target label', default='CriticalEvent'
-)
+parser.add_argument("--outcome", help="The target label", default="CriticalEvent")
 
 
 def run(args):
@@ -463,4 +481,3 @@ def run(args):
 
 if __name__ == "__main__":
     run(parser.parse_args())
-

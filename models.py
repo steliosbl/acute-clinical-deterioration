@@ -14,7 +14,8 @@ from imblearn import FunctionSampler
 
 from lightgbm import LGBMClassifier
 from xgboost import XGBClassifier
-from pytorch_tabnet.tab_model import TabNetClassifier
+
+# from pytorch_tabnet.tab_model import TabNetClassifier
 
 import shap
 
@@ -169,7 +170,7 @@ class Estimator_XGBoost(Estimator):
 
     _requirements = dict(
         onehot=False,
-        ordinal=False,
+        ordinal=True,
         imputation=False,
         fillna=False,
         oneclass=False,
@@ -183,7 +184,7 @@ class Estimator_XGBoost(Estimator):
         n_jobs=1,
         objective="binary:logistic",
         booster="gbtree",
-        enable_categorical=True,
+        enable_categorical=False,
     )
 
     _tuning_params_default = dict(
@@ -435,7 +436,7 @@ class Estimator_RandomForest(Estimator):
 
 
 class IsolationForestWrapper(IsolationForest):
-    """ Wraps the scikit-learn Isolation Forest model to adapt it to our test harness. This is because the original gives non-standard outputs when predicting """
+    """Wraps the scikit-learn Isolation Forest model to adapt it to our test harness. This is because the original gives non-standard outputs when predicting"""
 
     def predict(self, X):
         return np.fromiter(map({-1: 0, 1: 1}.get, super().predict(X)), dtype=int)
@@ -492,37 +493,37 @@ class Estimator_IsolationForest(Estimator):
         return cls.compile_parameters(suggestions)
 
 
-@dataclass
-class TabNetWrapper(TabNetClassifier):
-    weights: int = 0
-    max_epochs: int = 100
-    patience: int = 10
-    batch_size: int = 1024
-    virtual_batch_size: int = 128
-    drop_last: bool = True
-    eval_metric: str = None
+# @dataclass
+# class TabNetWrapper(TabNetClassifier):
+#     weights: int = 0
+#     max_epochs: int = 100
+#     patience: int = 10
+#     batch_size: int = 1024
+#     virtual_batch_size: int = 128
+#     drop_last: bool = True
+#     eval_metric: str = None
 
-    def fit(self, X, y):
-        return super().fit(
-            X_train=X.to_numpy(),
-            y_train=y.to_numpy(),
-            eval_metric=self.eval_metric,
-            weights=self.weights,
-            max_epochs=self.max_epochs,
-            patience=self.patience,
-            batch_size=self.batch_size,
-            virtual_batch_size=self.virtual_batch_size,
-            drop_last=self.drop_last,
-        )
+#     def fit(self, X, y):
+#         return super().fit(
+#             X_train=X.to_numpy(),
+#             y_train=y.to_numpy(),
+#             eval_metric=self.eval_metric,
+#             weights=self.weights,
+#             max_epochs=self.max_epochs,
+#             patience=self.patience,
+#             batch_size=self.batch_size,
+#             virtual_batch_size=self.virtual_batch_size,
+#             drop_last=self.drop_last,
+#         )
 
-    def predict(self, X):
-        return super().predict(X.to_numpy())
+#     def predict(self, X):
+#         return super().predict(X.to_numpy())
 
-    def predict_proba(self, X):
-        return super().predict_proba(X.to_numpy())
+#     def predict_proba(self, X):
+#         return super().predict_proba(X.to_numpy())
 
-    def decision_function(self, X):
-        return self.predict_proba(X)[:, 1]
+#     def decision_function(self, X):
+#         return self.predict_proba(X)[:, 1]
 
 
 class Estimator_LinearSVM(Estimator):
@@ -550,7 +551,10 @@ class Estimator_LinearSVM(Estimator):
         learning_rate="optimal",
     )
 
-    _tuning_params_default = dict(class_weight="balanced", alpha=0.0001,)
+    _tuning_params_default = dict(
+        class_weight="balanced",
+        alpha=0.0001,
+    )
 
     @classmethod
     def suggest_parameters(cls, trial):
@@ -581,102 +585,106 @@ class Estimator_OneClassSVM(Estimator):
 
     _static_params = dict(max_iter=20000, random_state=42, learning_rate="optimal")
 
-    _tuning_params_default = dict(nu=0.5,)
-
-    @classmethod
-    def suggest_parameters(cls, trial):
-        suggestions = dict(nu=trial.suggest_float(f"{cls._name}__nu", 0.1, 1.0),)
-
-        return cls.compile_parameters(suggestions)
-
-
-class Estimator_TabNet(Estimator):
-    _estimator = TabNetWrapper
-    _name = "TabNet"
-    _requirements = dict(
-        onehot=False,
-        ordinal=True,
-        imputation=True,
-        fillna=True,
-        oneclass=False,
-        calibration=True,
-        explanation=False,
-        scaling=False,
-    )
-
-    _static_params = dict(
-        optimizer_fn=torch.optim.Adam,
-        scheduler_fn=torch.optim.lr_scheduler.ReduceLROnPlateau,
-        verbose=0,
-        device_name="cuda" if torch.cuda.is_available() else "cpu",
-        scheduler_params=dict(mode="min", min_lr=1e-5, factor=0.5),
-        optimizer_params=dict(lr=2e-2, weight_decay=1e-5),
-        cat_emb_dim=1,
-        max_epochs=50,
-        eval_metric="average_precision",
-        weights=1,
-        drop_last=False,
-    )
-
     _tuning_params_default = dict(
-        n_d=8,
-        n_a=8,
-        n_steps=3,
-        gamma=1.2,
-        lambda_sparse=8e-4,
-        mask_type="sparsemax",
-        n_shared=3,
-        scheduler_params=dict(patience=5),
+        nu=0.5,
     )
-
-    def __init__(self, sci_train):
-        self._categorical_idxs, self._categorical_dims = sci_train.describe_categories(
-            dimensions=True
-        )
-
-    def factory(self,):
-        return self._estimator(
-            cat_idxs=self._categorical_idxs,
-            cat_dims=[
-                _ + 1 for _ in self._categorical_dims
-            ],  # Because we may add 1 category when we fill_na
-            **self._static_params,
-        )
 
     @classmethod
     def suggest_parameters(cls, trial):
         suggestions = dict(
-            n_steps=trial.suggest_int(f"{cls._name}__n_steps", 1, 10),
-            n_shared=trial.suggest_int(f"{cls._name}__n_shared", 1, 10),
-            gamma=trial.suggest_float(f"{cls._name}__gamma", 1, 1.5),
-            lambda_sparse=trial.suggest_float(
-                f"{cls._name}__lambda_sparse", 1e-6, 1e-3, log=True
-            ),
-            mask_type=trial.suggest_categorical(
-                f"{cls._name}__mask_type", ["entmax", "sparsemax"]
-            ),
-            scheduler_params=dict(
-                patience=trial.suggest_int(f"{cls._name}__scheduler__patience", 3, 10)
-            ),
+            nu=trial.suggest_float(f"{cls._name}__nu", 0.1, 1.0),
         )
-
-        n_da = trial.suggest_int(f"{cls._name}__n_da", 4, 32,)
-        suggestions["n_d"], suggestions["n_a"] = n_da, n_da
 
         return cls.compile_parameters(suggestions)
 
-    @classmethod
-    def compile_parameters(cls, params):
-        r = {
-            **cls._static_params,
-            **cls._tuning_params_default,
-            **params,
-            "scheduler_params": {
-                **cls._static_params["scheduler_params"],
-                **params["scheduler_params"],
-            },
-        }
-        return {f"{cls._name}__{key}": value for key, value in r.items()}
+
+# class Estimator_TabNet(Estimator):
+#     _estimator = TabNetWrapper
+#     _name = "TabNet"
+#     _requirements = dict(
+#         onehot=False,
+#         ordinal=True,
+#         imputation=True,
+#         fillna=True,
+#         oneclass=False,
+#         calibration=True,
+#         explanation=False,
+#         scaling=False,
+#     )
+
+#     _static_params = dict(
+#         optimizer_fn=torch.optim.Adam,
+#         scheduler_fn=torch.optim.lr_scheduler.ReduceLROnPlateau,
+#         verbose=0,
+#         device_name="cuda" if torch.cuda.is_available() else "cpu",
+#         scheduler_params=dict(mode="min", min_lr=1e-5, factor=0.5),
+#         optimizer_params=dict(lr=2e-2, weight_decay=1e-5),
+#         cat_emb_dim=1,
+#         max_epochs=50,
+#         eval_metric="average_precision",
+#         weights=1,
+#         drop_last=False,
+#     )
+
+#     _tuning_params_default = dict(
+#         n_d=8,
+#         n_a=8,
+#         n_steps=3,
+#         gamma=1.2,
+#         lambda_sparse=8e-4,
+#         mask_type="sparsemax",
+#         n_shared=3,
+#         scheduler_params=dict(patience=5),
+#     )
+
+#     def __init__(self, sci_train):
+#         self._categorical_idxs, self._categorical_dims = sci_train.describe_categories(
+#             dimensions=True
+#         )
+
+#     def factory(self,):
+#         return self._estimator(
+#             cat_idxs=self._categorical_idxs,
+#             cat_dims=[
+#                 _ + 1 for _ in self._categorical_dims
+#             ],  # Because we may add 1 category when we fill_na
+#             **self._static_params,
+#         )
+
+#     @classmethod
+#     def suggest_parameters(cls, trial):
+#         suggestions = dict(
+#             n_steps=trial.suggest_int(f"{cls._name}__n_steps", 1, 10),
+#             n_shared=trial.suggest_int(f"{cls._name}__n_shared", 1, 10),
+#             gamma=trial.suggest_float(f"{cls._name}__gamma", 1, 1.5),
+#             lambda_sparse=trial.suggest_float(
+#                 f"{cls._name}__lambda_sparse", 1e-6, 1e-3, log=True
+#             ),
+#             mask_type=trial.suggest_categorical(
+#                 f"{cls._name}__mask_type", ["entmax", "sparsemax"]
+#             ),
+#             scheduler_params=dict(
+#                 patience=trial.suggest_int(f"{cls._name}__scheduler__patience", 3, 10)
+#             ),
+#         )
+
+#         n_da = trial.suggest_int(f"{cls._name}__n_da", 4, 32,)
+#         suggestions["n_d"], suggestions["n_a"] = n_da, n_da
+
+#         return cls.compile_parameters(suggestions)
+
+#     @classmethod
+#     def compile_parameters(cls, params):
+#         r = {
+#             **cls._static_params,
+#             **cls._tuning_params_default,
+#             **params,
+#             "scheduler_params": {
+#                 **cls._static_params["scheduler_params"],
+#                 **params["scheduler_params"],
+#             },
+#         }
+#         return {f"{cls._name}__{key}": value for key, value in r.items()}
 
 
 class Resampler(Estimator):
@@ -703,7 +711,10 @@ class Resampler_SMOTE(Resampler):
     _name = "SMOTE"
     _estimator = SMOTENC
 
-    _static_params = dict(random_state=42, n_jobs=None,)
+    _static_params = dict(
+        random_state=42,
+        n_jobs=None,
+    )
 
     _tuning_params_default = dict(sampling_strategy=0.1, k_neighbors=5)
 
